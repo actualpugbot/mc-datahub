@@ -1,0 +1,32 @@
+{
+  "name": "mc-datahub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Track Minecraft Java Edition versions and extract normalized datasets.",
+  "engines": {
+    "node": ">=18.19"
+  },
+  "bin": {
+    "mc-datahub": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "cheerio": "1.0.0",
+    "commander": "^12.1.0",
+    "unzipper": "^0.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/unzipper": "^0.10.11",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}
