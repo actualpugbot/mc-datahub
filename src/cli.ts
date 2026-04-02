@@ -65,6 +65,40 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(result, null, 2));
     });
 
+  const toolchainCommand = program.command("toolchain").description("Inspect external toolchain configuration.");
+  toolchainCommand
+    .command("doctor")
+    .description("Show detected decompile tooling and how it was resolved.")
+    .action(async () => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      console.log(
+        JSON.stringify(
+          {
+            workspaceRoot: context.config.workspace.root,
+            toolchain: {
+              tinyRemapper: {
+                configured: Boolean(context.config.toolchain.tinyRemapperCommand),
+                command: context.config.toolchain.tinyRemapperCommand ?? null,
+                message: context.config.toolchain.tinyRemapperCommand
+                  ? "Using MCDATAHUB_TINY_REMAPPER_CMD from the environment."
+                  : "Set MCDATAHUB_TINY_REMAPPER_CMD to enable remapping before decompilation.",
+              },
+              vineflower: {
+                configured: Boolean(context.config.toolchain.vineflowerCommand),
+                command: context.config.toolchain.vineflowerCommand ?? null,
+                source: context.config.toolchain.vineflower.source,
+                location: context.config.toolchain.vineflower.location ?? null,
+                message: context.config.toolchain.vineflower.message,
+                searchedPaths: context.config.toolchain.vineflower.searchedPaths,
+              },
+            },
+          },
+          null,
+          2,
+        ),
+      );
+    });
+
   const diffCommand = program.command("diff").description("Compare two processed Minecraft versions.");
   diffCommand
     .command("versions")

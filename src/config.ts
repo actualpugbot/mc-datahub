@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { createWorkspacePaths, type WorkspacePaths } from "./core/paths.js";
+import { resolveVineflowerTool, type ResolvedVineflowerTool } from "./decompile/vineflowerTool.js";
 
 export interface AppConfig {
   projectRoot: string;
@@ -17,6 +18,7 @@ export interface AppConfig {
   toolchain: {
     tinyRemapperCommand?: string;
     vineflowerCommand?: string;
+    vineflower: ResolvedVineflowerTool;
   };
 }
 
@@ -24,6 +26,7 @@ export function loadConfig(projectRoot = process.cwd()): AppConfig {
   const workspaceRoot = process.env.MCDATAHUB_WORKSPACE_ROOT
     ? resolve(process.env.MCDATAHUB_WORKSPACE_ROOT)
     : resolve(projectRoot, "workspace");
+  const vineflower = resolveVineflowerTool(projectRoot, workspaceRoot);
 
   return {
     projectRoot,
@@ -41,7 +44,8 @@ export function loadConfig(projectRoot = process.cwd()): AppConfig {
     },
     toolchain: {
       tinyRemapperCommand: process.env.MCDATAHUB_TINY_REMAPPER_CMD,
-      vineflowerCommand: process.env.MCDATAHUB_VINEFLOWER_CMD,
+      vineflowerCommand: vineflower.command,
+      vineflower,
     },
   };
 }

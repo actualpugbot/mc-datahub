@@ -128,7 +128,7 @@ export class DecompilePipeline {
         status: "skipped",
         inputPath: input,
         outputPath: output,
-        reason: "MCDATAHUB_VINEFLOWER_CMD is not configured.",
+        reason: this.config.toolchain.vineflower.message,
       };
     }
 

@@ -52,6 +52,7 @@ Run the main commands:
 npm run cli -- fetch latest
 npm run cli -- process version 1.21.5
 npm run cli -- process version latest-snapshot
+npm run cli -- toolchain doctor
 npm run cli -- diff versions 1.21.4 1.21.5
 npm run cli -- dump recipes 1.21.5 --output ./recipes.json
 npm run cli -- api serve --port 4000
@@ -80,6 +81,7 @@ The extraction and diff pipeline work out of the box once dependencies are insta
 
 - `MCDATAHUB_TINY_REMAPPER_CMD`
 - `MCDATAHUB_VINEFLOWER_CMD`
+- `MCDATAHUB_VINEFLOWER_JAR`
 
 Both values are command templates with placeholders:
 
@@ -96,7 +98,27 @@ export MCDATAHUB_TINY_REMAPPER_CMD='java -jar /opt/remapper-helper.jar --input {
 export MCDATAHUB_VINEFLOWER_CMD='java -jar /opt/vineflower.jar {input} {output}'
 ```
 
-If no toolchain is configured, `process version` still downloads, extracts, and exports datasets while recording the decompile step as skipped.
+For the common Vineflower case, you can skip the full command template and point straight at the JAR:
+
+```bash
+export MCDATAHUB_VINEFLOWER_JAR=/opt/vineflower.jar
+```
+
+`mc-datahub` also auto-detects Vineflower in these locations, in this order:
+
+- `MCDATAHUB_VINEFLOWER_CMD`
+- `MCDATAHUB_VINEFLOWER_JAR`
+- `workspace/tools/vineflower.jar` or `workspace/tools/vineflower-*.jar`
+- `./tools/vineflower.jar` or `./tools/vineflower-*.jar`
+- a `vineflower` or `fernflower` executable on `PATH`
+
+Use the doctor command to see exactly what was found:
+
+```bash
+npm run cli -- toolchain doctor
+```
+
+If no toolchain is configured, `process version` still downloads, extracts, and exports datasets while recording the decompile step as skipped with a more specific reason.
 
 ## Environment Variables
 
