@@ -7,6 +7,7 @@ import { buildApiServer } from "./api/server.js";
 import { fileExists, writeJsonFile } from "./core/fs.js";
 import { versionDownloadsDir } from "./core/paths.js";
 import { createDefaultContext } from "./index.js";
+import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
 
 function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -27,9 +28,9 @@ async function main(): Promise<void> {
   const fetchCommand = program.command("fetch").description("Watch for new Minecraft version posts.");
   fetchCommand
     .command("latest")
-    .description("Poll official Minecraft news, resolve unseen versions, and optionally process them.")
+    .description("Resolve the latest release and/or snapshot from Mojang's manifest and optionally process them.")
     .option("--kind <kind>", "release, snapshot, or any", "any")
-    .option("--limit <number>", "Maximum unseen posts to inspect", parseInteger, 1)
+    .option("--limit <number>", "Maximum latest versions to inspect", parseInteger, 2)
     .option("--mappings <provider>", "mojang or yarn", "mojang")
     .option("--skip-decompile", "Skip the decompile pipeline", false)
     .option("--force", "Ignore cached processing fingerprints", false)
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
   const processCommand = program.command("process").description("Run pipeline steps for a specific version.");
   processCommand
     .command("version")
-    .argument("<version>", "Minecraft version id or alias such as latest-release")
+    .argument("<version>", "Minecraft version id or alias such as latest-release or latest-snapshot")
     .option("--mappings <provider>", "mojang or yarn", "mojang")
     .option("--skip-decompile", "Skip the decompile pipeline", false)
     .option("--force", "Ignore cached processing fingerprints", false)
@@ -97,32 +98,35 @@ async function main(): Promise<void> {
   const dumpCommand = program.command("dump").description("Dump extracted data as JSON.");
   dumpCommand
     .command("recipes")
-    .argument("<version>", "Minecraft version id with downloaded client/server jars")
+    .argument("<version>", "Minecraft version id with a processed dataset or downloaded client/server jars")
     .option("--output <path>", "Write JSON to a file instead of stdout")
     .action(async (version, options) => {
       const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
-      const downloadsDir = versionDownloadsDir(context.config.workspace, version);
-      const sources = [];
-      const clientJarPath = join(downloadsDir, "client.jar");
-      const serverJarPath = join(downloadsDir, "server.jar");
+      const payload = await buildRecipeDumpPayload(version, {
+        loadDataset: (datasetVersion) => context.datasetStore.loadDataset(datasetVersion),
+        extractDataset: async (datasetVersion) => {
+          const downloadsDir = versionDownloadsDir(context.config.workspace, datasetVersion);
+          const sources = [];
+          const clientJarPath = join(downloadsDir, "client.jar");
+          const serverJarPath = join(downloadsDir, "server.jar");
 
-      if (await fileExists(clientJarPath)) {
-        sources.push(new ZipArchiveSource(clientJarPath));
-      }
+          if (await fileExists(clientJarPath)) {
+            sources.push(new ZipArchiveSource(clientJarPath));
+          }
 
-      if (await fileExists(serverJarPath)) {
-        sources.push(new ZipArchiveSource(serverJarPath));
-      }
+          if (await fileExists(serverJarPath)) {
+            sources.push(new ZipArchiveSource(serverJarPath));
+          }
 
-      if (sources.length === 0) {
-        throw new Error(`No downloaded client.jar or server.jar was found for ${version} in ${downloadsDir}.`);
-      }
+          if (sources.length === 0) {
+            throw new Error(
+              `No processed dataset or downloaded client.jar/server.jar was found for ${datasetVersion}. Looked in ${downloadsDir}.`,
+            );
+          }
 
-      const dataset = await context.extractor.extract(version, sources);
-      const payload = {
-        version,
-        recipes: dataset.recipes,
-      };
+          return context.extractor.extract(datasetVersion, sources);
+        },
+      });
 
       if (options.output) {
         const outputPath = resolve(process.cwd(), options.output);
@@ -130,8 +134,9 @@ async function main(): Promise<void> {
         console.log(
           JSON.stringify(
             {
-              version,
-              recipeCount: dataset.recipes.length,
+              version: payload.version,
+              recipeCount: payload.recipes.length,
+              source: payload.source,
               outputPath,
             },
             null,

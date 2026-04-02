@@ -91,6 +91,7 @@ export class MinecraftDataExtractor {
         id: idFromAssetPath(TEXTURE_PREFIX, path),
         kind: textureKindFromPath(path),
         sourcePath: path,
+        imagePath: `images/${path.slice(TEXTURE_PREFIX.length)}`,
       }))
       .sort((left, right) => left.id.localeCompare(right.id));
   }

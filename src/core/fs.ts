@@ -37,3 +37,8 @@ export async function writeTextFile(path: string, value: string): Promise<void> 
   await ensureDir(dirname(path));
   await fs.writeFile(path, value, "utf8");
 }
+
+export async function writeBufferFile(path: string, value: Buffer): Promise<void> {
+  await ensureDir(dirname(path));
+  await fs.writeFile(path, value);
+}

@@ -5,10 +5,11 @@
 ## What It Does
 
 - Polls the official Minecraft articles feed and detects new release or snapshot posts.
-- Resolves version metadata from Mojang's version manifest.
+- Resolves the latest release and snapshot metadata from Mojang's version manifest.
 - Downloads client and server JARs into versioned workspace directories.
 - Orchestrates a decompilation pipeline that can plug into Tiny Remapper and Vineflower.
 - Extracts normalized block, item, recipe, model, and texture datasets from vanilla assets and data packs.
+- Exports extracted texture PNGs alongside each versioned dataset.
 - Derives extracted and curated palette presets from vanilla trim palettes and biome colormaps.
 - Compares datasets between versions and writes structured diffs.
 - Serves extracted datasets over HTTP.
@@ -29,6 +30,7 @@ workspace/
     items.json
     recipes.json
     textures.json
+    images/             Extracted texture PNG files
     models.json
     palettes.json
   diffs/
@@ -49,10 +51,15 @@ Run the main commands:
 ```bash
 node dist/cli.js fetch latest
 node dist/cli.js process version 1.21.5
+node dist/cli.js process version latest-snapshot
 node dist/cli.js diff versions 1.21.4 1.21.5
 node dist/cli.js dump recipes 1.21.5 --output ./recipes.json
 node dist/cli.js api serve --port 4000
 ```
+
+`dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
+
+`fetch latest` now resolves the latest release and latest snapshot directly from Mojang's manifest, so `--kind any` processes both by default.
 
 During development:
 

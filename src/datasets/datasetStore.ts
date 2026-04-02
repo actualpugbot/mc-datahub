@@ -1,9 +1,10 @@
+import type { ArchiveSource } from "../archive/archiveSource.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { ensureDir, readJsonFile, writeJsonFile } from "../core/fs.js";
+import { ensureDir, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
-import type { PaletteDefinition, VersionDataset, VersionDiff } from "../domain/types.js";
+import type { PaletteDefinition, TextureDefinition, VersionDataset, VersionDiff } from "../domain/types.js";
 
 export class DatasetStore {
   constructor(
@@ -11,9 +12,16 @@ export class DatasetStore {
     private readonly logger: Logger,
   ) {}
 
-  async saveDataset(dataset: VersionDataset): Promise<string> {
+  async saveDataset(dataset: VersionDataset, source?: ArchiveSource): Promise<string> {
     const directory = datasetVersionDir(this.paths, dataset.version);
     await ensureDir(directory);
+    for (const texture of dataset.textures) {
+      texture.imagePath ??= `images/${texture.sourcePath.slice("assets/minecraft/textures/".length)}`;
+    }
+
+    if (source) {
+      await this.exportTextureImages(directory, dataset.textures, source);
+    }
 
     await Promise.all([
       writeJsonFile(join(directory, "dataset.json"), dataset),
@@ -36,6 +44,10 @@ export class DatasetStore {
 
     return {
       ...dataset,
+      textures: dataset.textures.map((texture) => ({
+        ...texture,
+        imagePath: texture.imagePath ?? `images/${texture.sourcePath.slice("assets/minecraft/textures/".length)}`,
+      })),
       palettes: dataset.palettes ?? [],
     };
   }
@@ -54,5 +66,14 @@ export class DatasetStore {
     const outputPath = join(this.paths.diffsDir, `${diff.fromVersion}__${diff.toVersion}.json`);
     await writeJsonFile(outputPath, diff);
     return outputPath;
+  }
+
+  private async exportTextureImages(directory: string, textures: TextureDefinition[], source: ArchiveSource): Promise<void> {
+    for (const texture of textures) {
+      const imagePath = texture.imagePath ?? `images/${texture.sourcePath.slice("assets/minecraft/textures/".length)}`;
+      texture.imagePath = imagePath;
+      const buffer = await source.readBuffer(texture.sourcePath);
+      await writeBufferFile(join(directory, imagePath), buffer);
+    }
   }
 }

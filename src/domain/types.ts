@@ -89,6 +89,7 @@ export interface TextureDefinition {
   id: string;
   kind: "block" | "item" | "other";
   sourcePath: string;
+  imagePath?: string;
 }
 
 export interface PaletteDefinition {

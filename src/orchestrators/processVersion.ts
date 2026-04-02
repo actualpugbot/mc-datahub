@@ -8,6 +8,7 @@ import type { VersionManifestResolver } from "../versions/manifestResolver.js";
 import type { VersionDownloader } from "../download/versionDownloader.js";
 import type { Logger } from "../core/logger.js";
 import type { MappingProvider } from "../domain/types.js";
+import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
 
@@ -73,7 +74,7 @@ export class ProcessVersionWorkflow {
 
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
     dataset.provenance.mappingProvider = options.mappingProvider;
-    const datasetPath = await this.datasetStore.saveDataset(dataset);
+    const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);
 
     return {

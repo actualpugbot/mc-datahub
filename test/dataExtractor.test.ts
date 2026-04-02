@@ -134,6 +134,12 @@ describe("data extractor", () => {
       "minecraft:trims/color_palettes/quartz",
       "minecraft:trims/color_palettes/trim_palette",
     ]);
+    expect(dataset.textures.find((texture) => texture.id === "minecraft:block/oak_planks")?.imagePath).toBe(
+      "images/block/oak_planks.png",
+    );
+    expect(dataset.textures.find((texture) => texture.id === "minecraft:trims/color_palettes/amethyst")?.imagePath).toBe(
+      "images/trims/color_palettes/amethyst.png",
+    );
 
     const amethystExtracted = dataset.palettes.find((palette) => palette.id === "minecraft:palette/extracted/trim/amethyst");
     expect(amethystExtracted?.colors).toEqual([
