@@ -49,12 +49,12 @@ npm run build
 Run the main commands:
 
 ```bash
-node dist/cli.js fetch latest
-node dist/cli.js process version 1.21.5
-node dist/cli.js process version latest-snapshot
-node dist/cli.js diff versions 1.21.4 1.21.5
-node dist/cli.js dump recipes 1.21.5 --output ./recipes.json
-node dist/cli.js api serve --port 4000
+npm run cli -- fetch latest
+npm run cli -- process version 1.21.5
+npm run cli -- process version latest-snapshot
+npm run cli -- diff versions 1.21.4 1.21.5
+npm run cli -- dump recipes 1.21.5 --output ./recipes.json
+npm run cli -- api serve --port 4000
 ```
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
@@ -64,7 +64,14 @@ node dist/cli.js api serve --port 4000
 During development:
 
 ```bash
-npm run dev:cli -- fetch latest --no-process
+npm run cli:dev -- fetch latest --no-process
+```
+
+If you want the shortest possible form for repeated use, link the package once and run the binary directly:
+
+```bash
+npm link
+mc-datahub fetch latest
 ```
 
 ## Decompilation Tooling
