@@ -89,6 +89,7 @@ function createDataset(version: string): VersionDataset {
     palettes: [],
     itemStats: [],
     blockProperties: [],
+    mobImages: [],
     mobSounds: [],
   };
 }

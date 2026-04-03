@@ -11,6 +11,7 @@
 - Extracts normalized block, item, recipe, model, and texture datasets from vanilla assets and data packs.
 - Derives source-based `item-stats` and `block-properties` datasets from decompiled client source when available.
 - Exports extracted texture PNGs alongside each versioned dataset.
+- Derives mob image metadata from client entity renderers and exports representative mob PNGs.
 - Derives extracted and curated palette presets from vanilla trim palettes and biome colormaps.
 - Compares datasets between versions and writes structured diffs.
 - Serves extracted datasets over HTTP.
@@ -34,6 +35,8 @@ workspace/
     recipes.json
     textures.json
     images/             Extracted texture PNG files
+    mob-images.json
+    mob-images/         Exported mob entity PNG files
     models.json
     palettes.json
   diffs/
@@ -50,11 +53,12 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `recipes.json`: normalized vanilla recipe data
 - `models.json`: model parent chains and texture references
 - `textures.json` plus `images/`: texture metadata and exported PNG files
+- `mob-images.json` plus `mob-images/`: mob image metadata and exported representative entity PNG files
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
 
-For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `recipes`, and `palettes`.
+For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `mob-images`, `mob-sounds`, `recipes`, and `palettes`.
 
 ## CLI
 

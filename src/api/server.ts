@@ -42,6 +42,7 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
             "GET /versions/:version/items?id=&q=",
             "GET /versions/:version/item-stats?id=&q=",
             "GET /versions/:version/block-properties?id=&q=",
+            "GET /versions/:version/mob-images?id=&q=",
             "GET /versions/:version/mob-sounds?id=&q=",
             "GET /versions/:version/recipes?id=&q=",
             "GET /versions/:version/palettes?id=&q=",
@@ -74,6 +75,11 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
 
         if (collection === "block-properties") {
           sendJson(response, 200, { version, blockProperties: filterCollection(dataset.blockProperties, id, query) });
+          return;
+        }
+
+        if (collection === "mob-images") {
+          sendJson(response, 200, { version, mobImages: filterMobImages(dataset.mobImages, id, query) });
           return;
         }
 
@@ -138,6 +144,32 @@ function filterCollection<T extends { id: string }>(entries: T[], id?: string, q
   if (query) {
     const normalizedQuery = query.toLowerCase();
     return entries.filter((entry) => entry.id.toLowerCase().includes(normalizedQuery));
+  }
+
+  return entries;
+}
+
+function filterMobImages<
+  T extends {
+    id: string;
+    localId: string;
+    displayName: string;
+    origin: string;
+    rendererClass?: string;
+  },
+>(entries: T[], id?: string, query?: string): T[] {
+  if (id) {
+    const normalizedId = normalizeMinecraftId(id);
+    return entries.filter((entry) => entry.id === normalizedId || normalizeMinecraftId(entry.localId) === normalizedId);
+  }
+
+  if (query) {
+    const normalizedQuery = query.toLowerCase();
+    return entries.filter((entry) =>
+      [entry.id, entry.localId, entry.displayName, entry.origin, entry.rendererClass ?? ""].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
   }
 
   return entries;

@@ -217,6 +217,25 @@ export interface ResourcePackDefinition {
   supportedFormats?: ResourcePackSupportedFormats;
 }
 
+export interface MobImageVariantDefinition {
+  id: string;
+  sourcePath?: string;
+  imagePath: string;
+  origin: "renderer" | "asset-search" | "generated";
+  role: "base" | "variant" | "baby" | "overlay" | "generated";
+}
+
+export interface MobImageDefinition {
+  id: string;
+  localId: string;
+  displayName: string;
+  rendererClass?: string;
+  sourcePath?: string;
+  imagePath: string;
+  origin: MobImageVariantDefinition["origin"];
+  variants: MobImageVariantDefinition[];
+}
+
 export interface MobSoundVariantDefinition {
   id: string;
   soundPath: string;
@@ -268,6 +287,7 @@ export interface VersionDataset {
   palettes: PaletteDefinition[];
   itemStats: ItemStatDefinition[];
   blockProperties: BlockPropertyDefinition[];
+  mobImages: MobImageDefinition[];
   mobSounds: MobSoundDefinition[];
   resourcePack?: ResourcePackDefinition;
 }
@@ -297,6 +317,7 @@ export interface VersionDiff {
   palettes: CollectionDiff<PaletteDefinition>;
   itemStats: CollectionDiff<ItemStatDefinition>;
   blockProperties: CollectionDiff<BlockPropertyDefinition>;
+  mobImages: CollectionDiff<MobImageDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
 }
 

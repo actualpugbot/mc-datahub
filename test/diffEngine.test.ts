@@ -18,6 +18,7 @@ function createDataset(version: string): VersionDataset {
     palettes: [],
     itemStats: [],
     blockProperties: [],
+    mobImages: [],
     mobSounds: [],
   };
 }
@@ -91,11 +92,51 @@ describe("diff engine", () => {
         tags: ["curated", "material", "amethyst"],
       },
     ];
+    from.mobImages = [
+      {
+        id: "minecraft:allay",
+        localId: "allay",
+        displayName: "Allay",
+        imagePath: "mob-images/allay/allay.png",
+        sourcePath: "assets/minecraft/textures/entity/allay/allay.png",
+        origin: "renderer",
+        variants: [
+          {
+            id: "allay/allay",
+            imagePath: "mob-images/allay/allay.png",
+            sourcePath: "assets/minecraft/textures/entity/allay/allay.png",
+            origin: "renderer",
+            role: "base",
+          },
+        ],
+      },
+    ];
+
+    to.mobImages = [
+      {
+        id: "minecraft:allay",
+        localId: "allay",
+        displayName: "Allay",
+        imagePath: "mob-images/allay/allay_v2.png",
+        sourcePath: "assets/minecraft/textures/entity/allay/allay_v2.png",
+        origin: "renderer",
+        variants: [
+          {
+            id: "allay/allay_v2",
+            imagePath: "mob-images/allay/allay_v2.png",
+            sourcePath: "assets/minecraft/textures/entity/allay/allay_v2.png",
+            origin: "renderer",
+            role: "base",
+          },
+        ],
+      },
+    ];
 
     const diff = new DiffEngine().compare(from, to);
     expect(diff.blocks.added).toHaveLength(1);
     expect(diff.blocks.changed).toHaveLength(1);
     expect(diff.items.removed).toHaveLength(1);
+    expect(diff.mobImages.changed).toHaveLength(1);
     expect(diff.palettes.changed).toHaveLength(1);
   });
 });

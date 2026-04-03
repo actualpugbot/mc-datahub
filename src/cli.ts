@@ -123,6 +123,8 @@ async function main(): Promise<void> {
               textures: summarizeCollection(diff.textures),
               models: summarizeCollection(diff.models),
               palettes: summarizeCollection(diff.palettes),
+              mobImages: summarizeCollection(diff.mobImages),
+              mobSounds: summarizeCollection(diff.mobSounds),
             },
           },
           null,

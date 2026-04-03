@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { ensureDir, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
+import { encodePng, type RgbColor } from "../extraction/png.js";
 import type {
   BlockPropertyDefinition,
   ItemStatDefinition,
+  MobImageDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   ResourcePackDefinition,
@@ -30,6 +32,7 @@ export class DatasetStore {
 
     if (source) {
       await this.exportTextureImages(directory, dataset.textures, source);
+      await this.exportMobImages(directory, dataset.mobImages, source);
     }
 
     await Promise.all([
@@ -42,6 +45,11 @@ export class DatasetStore {
       writeJsonFile(join(directory, "textures.json"), dataset.textures),
       writeJsonFile(join(directory, "models.json"), dataset.models),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
+      writeJsonFile(join(directory, "mob-images.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        mobs: dataset.mobImages,
+      }),
       writeJsonFile(join(directory, "mob-sounds.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -60,6 +68,7 @@ export class DatasetStore {
         palettes?: PaletteDefinition[];
         itemStats?: ItemStatDefinition[];
         blockProperties?: BlockPropertyDefinition[];
+        mobImages?: MobImageDefinition[];
         mobSounds?: MobSoundDefinition[];
         resourcePack?: ResourcePackDefinition;
       }
@@ -76,6 +85,7 @@ export class DatasetStore {
       palettes: dataset.palettes ?? [],
       itemStats: dataset.itemStats ?? [],
       blockProperties: dataset.blockProperties ?? [],
+      mobImages: dataset.mobImages ?? [],
       mobSounds: dataset.mobSounds ?? [],
       resourcePack: dataset.resourcePack,
     };
@@ -105,4 +115,93 @@ export class DatasetStore {
       await writeBufferFile(join(directory, imagePath), buffer);
     }
   }
+
+  private async exportMobImages(directory: string, mobImages: MobImageDefinition[], source: ArchiveSource): Promise<void> {
+    const exportedPaths = new Set<string>();
+
+    for (const mobImage of mobImages) {
+      const variants =
+        mobImage.variants.length > 0
+          ? mobImage.variants
+          : [
+              {
+                id: mobImage.localId,
+                sourcePath: mobImage.sourcePath,
+                imagePath: mobImage.imagePath,
+                origin: mobImage.origin,
+                role: mobImage.origin === "generated" ? "generated" : "base",
+              },
+            ];
+
+      for (const variant of variants) {
+        if (exportedPaths.has(variant.imagePath)) {
+          continue;
+        }
+
+        const buffer = variant.sourcePath ? await source.readBuffer(variant.sourcePath) : createMobPlaceholderImage(mobImage.localId);
+        await writeBufferFile(join(directory, variant.imagePath), buffer);
+        exportedPaths.add(variant.imagePath);
+      }
+    }
+  }
+}
+
+function createMobPlaceholderImage(localId: string): Buffer {
+  const width = 16;
+  const height = 16;
+  const hash = hashString(localId);
+  const background = deriveColor(hash, 0.18, 160);
+  const foreground = deriveColor(hash >>> 5, 0.62, 72);
+  const accent = deriveColor(hash >>> 11, 0.82, 40);
+  const pixels: RgbColor[] = [];
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let color = background;
+      const gridX = Math.floor((x - 3) / 2);
+      const gridY = Math.floor((y - 3) / 2);
+      const mirroredX = gridX >= 0 && gridX < 5 ? Math.min(gridX, 4 - gridX) : -1;
+
+      if (gridX >= 0 && gridX < 5 && gridY >= 0 && gridY < 5) {
+        const bitIndex = gridY * 3 + Math.max(0, mirroredX);
+        const useAccent = ((hash >>> (bitIndex + 9)) & 1) === 1;
+        const fill = ((hash >>> bitIndex) & 1) === 1;
+        color = fill ? (useAccent ? accent : foreground) : background;
+      }
+
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        color = accent;
+      }
+
+      pixels.push(color);
+    }
+  }
+
+  return encodePng(width, height, pixels);
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function deriveColor(hash: number, saturation: number, floor: number): RgbColor {
+  const red = floor + ((hash >>> 0) & 0x3f);
+  const green = floor + ((hash >>> 6) & 0x3f);
+  const blue = floor + ((hash >>> 12) & 0x3f);
+
+  return [
+    clampColor(red * saturation + 255 * (1 - saturation)),
+    clampColor(green * saturation + 255 * (1 - saturation)),
+    clampColor(blue * saturation + 255 * (1 - saturation)),
+  ];
+}
+
+function clampColor(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
 }

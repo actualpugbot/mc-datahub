@@ -1,4 +1,4 @@
-import { inflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 
 export type RgbColor = [number, number, number];
 
@@ -9,6 +9,45 @@ export interface DecodedPng {
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const CRC32_TABLE = buildCrc32Table();
+
+export function encodePng(width: number, height: number, pixels: RgbColor[]): Buffer {
+  if (pixels.length !== width * height) {
+    throw new Error(`Expected ${width * height} pixels but received ${pixels.length}.`);
+  }
+
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  let rawOffset = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    raw.writeUInt8(0, rawOffset);
+    rawOffset += 1;
+
+    for (let x = 0; x < width; x += 1) {
+      const [red, green, blue] = pixels[y * width + x] ?? [0, 0, 0];
+      raw.writeUInt8(clampColor(red), rawOffset);
+      raw.writeUInt8(clampColor(green), rawOffset + 1);
+      raw.writeUInt8(clampColor(blue), rawOffset + 2);
+      rawOffset += 3;
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.writeUInt8(8, 8);
+  ihdr.writeUInt8(2, 9);
+  ihdr.writeUInt8(0, 10);
+  ihdr.writeUInt8(0, 11);
+  ihdr.writeUInt8(0, 12);
+
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    createPngChunk("IHDR", ihdr),
+    createPngChunk("IDAT", deflateSync(raw)),
+    createPngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 export function decodePng(buffer: Buffer): DecodedPng {
   if (!buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
@@ -105,6 +144,19 @@ export function decodePng(buffer: Buffer): DecodedPng {
   };
 }
 
+function clampColor(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function createPngChunk(type: string, data: Buffer): Buffer {
+  const typeBuffer = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(calculateCrc32(Buffer.concat([typeBuffer, data])), 0);
+  return Buffer.concat([length, typeBuffer, data, crc]);
+}
+
 function applyPngFilter(row: Buffer, previousRow: Buffer, bytesPerPixel: number, filterType: number): void {
   if (filterType === 0) {
     return;
@@ -150,4 +202,27 @@ function paethPredictor(left: number, above: number, upperLeft: number): number 
   }
 
   return upperLeft;
+}
+
+function calculateCrc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const value of buffer) {
+    crc = (CRC32_TABLE[(crc ^ value) & 0xff] ?? 0) ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildCrc32Table(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let index = 0; index < table.length; index += 1) {
+    let crc = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) !== 0 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+    }
+
+    table[index] = crc >>> 0;
+  }
+
+  return table;
 }

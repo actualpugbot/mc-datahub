@@ -8,6 +8,7 @@ import { DecompilePipeline } from "./decompile/decompilePipeline.js";
 import { DiffEngine } from "./diff/diffEngine.js";
 import { VersionDownloader } from "./download/versionDownloader.js";
 import { MinecraftDataExtractor } from "./extraction/dataExtractor.js";
+import { MobImageExtractor } from "./extraction/mobImageExtractor.js";
 import { MobSoundExtractor } from "./extraction/mobSoundExtractor.js";
 import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
@@ -26,6 +27,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const mappingResolver = new MappingResolver(http, cache, config, logger);
   const decompilePipeline = new DecompilePipeline(config, logger);
   const extractor = new MinecraftDataExtractor(logger);
+  const mobImageExtractor = new MobImageExtractor(logger);
   const mobSoundExtractor = new MobSoundExtractor(http, cache, logger);
   const sourceExtractor = new DecompiledSourceExtractor(logger);
   const datasetStore = new DatasetStore(config.workspace, logger);
@@ -37,6 +39,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mappingResolver,
     decompilePipeline,
     extractor,
+    mobImageExtractor,
     mobSoundExtractor,
     sourceExtractor,
     datasetStore,
@@ -57,6 +60,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mappingResolver,
     decompilePipeline,
     extractor,
+    mobImageExtractor,
     mobSoundExtractor,
     sourceExtractor,
     datasetStore,

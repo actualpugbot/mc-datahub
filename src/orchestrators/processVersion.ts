@@ -12,6 +12,7 @@ import type { MappingProvider } from "../domain/types.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
+import type { MobImageExtractor } from "../extraction/mobImageExtractor.js";
 import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 
@@ -28,6 +29,7 @@ export class ProcessVersionWorkflow {
     private readonly mappingResolver: MappingResolver,
     private readonly decompilePipeline: DecompilePipeline,
     private readonly extractor: MinecraftDataExtractor,
+    private readonly mobImageExtractor: MobImageExtractor,
     private readonly mobSoundExtractor: MobSoundExtractor,
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly datasetStore: DatasetStore,
@@ -77,17 +79,15 @@ export class ProcessVersionWorkflow {
       throw new Error(`No client or server JAR was available for ${manifestEntry.id}.`);
     }
 
+    const decompiledClientRoot = join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client");
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
-    const mobSoundData = await this.mobSoundExtractor.extract(
-      manifestEntry.id,
-      metadata,
-      sources,
-      join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client"),
-    );
-    const sourceDerived = await this.sourceExtractor.extract(join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client"));
+    const mobSoundData = await this.mobSoundExtractor.extract(manifestEntry.id, metadata, sources, decompiledClientRoot);
+    const mobImages = await this.mobImageExtractor.extract(mobSoundData.mobSounds, sources, decompiledClientRoot);
+    const sourceDerived = await this.sourceExtractor.extract(decompiledClientRoot);
     dataset.provenance.mappingProvider = options.mappingProvider;
     dataset.itemStats = sourceDerived.itemStats;
     dataset.blockProperties = sourceDerived.blockProperties;
+    dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.resourcePack = mobSoundData.resourcePack;
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));

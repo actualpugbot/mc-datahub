@@ -7,6 +7,7 @@ import type {
   ItemDefinition,
   ItemStatDefinition,
   ModelDefinition,
+  MobImageDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   RecipeDefinition,
@@ -33,6 +34,7 @@ export class DiffEngine {
       palettes: this.diffCollection<PaletteDefinition>(from.palettes, to.palettes),
       itemStats: this.diffCollection<ItemStatDefinition>(from.itemStats, to.itemStats),
       blockProperties: this.diffCollection<BlockPropertyDefinition>(from.blockProperties, to.blockProperties),
+      mobImages: this.diffCollection<MobImageDefinition>(from.mobImages, to.mobImages),
       mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
     };
   }
