@@ -1,4 +1,5 @@
 import { stableJsonHash } from "../core/hash.js";
+import { join } from "node:path";
 import type { AppConfig } from "../config.js";
 import type { DecompilePipeline } from "../decompile/decompilePipeline.js";
 import type { DatasetStore } from "../datasets/datasetStore.js";
@@ -11,6 +12,7 @@ import type { MappingProvider } from "../domain/types.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
+import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 
 export interface ProcessVersionOptions {
   mappingProvider: MappingProvider;
@@ -25,6 +27,7 @@ export class ProcessVersionWorkflow {
     private readonly mappingResolver: MappingResolver,
     private readonly decompilePipeline: DecompilePipeline,
     private readonly extractor: MinecraftDataExtractor,
+    private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
     private readonly config: AppConfig,
@@ -73,7 +76,10 @@ export class ProcessVersionWorkflow {
     }
 
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
+    const sourceDerived = await this.sourceExtractor.extract(join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client"));
     dataset.provenance.mappingProvider = options.mappingProvider;
+    dataset.itemStats = sourceDerived.itemStats;
+    dataset.blockProperties = sourceDerived.blockProperties;
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);
 

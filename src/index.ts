@@ -8,6 +8,7 @@ import { DecompilePipeline } from "./decompile/decompilePipeline.js";
 import { DiffEngine } from "./diff/diffEngine.js";
 import { VersionDownloader } from "./download/versionDownloader.js";
 import { MinecraftDataExtractor } from "./extraction/dataExtractor.js";
+import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
 import { FetchLatestWorkflow } from "./orchestrators/fetchLatest.js";
 import { ProcessVersionWorkflow } from "./orchestrators/processVersion.js";
@@ -24,6 +25,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const mappingResolver = new MappingResolver(http, cache, config, logger);
   const decompilePipeline = new DecompilePipeline(config, logger);
   const extractor = new MinecraftDataExtractor(logger);
+  const sourceExtractor = new DecompiledSourceExtractor(logger);
   const datasetStore = new DatasetStore(config.workspace, logger);
   const diffEngine = new DiffEngine();
   const newsWatcher = new MinecraftNewsWatcher(http, cache, config, logger);
@@ -33,6 +35,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mappingResolver,
     decompilePipeline,
     extractor,
+    sourceExtractor,
     datasetStore,
     state,
     config,
@@ -51,6 +54,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mappingResolver,
     decompilePipeline,
     extractor,
+    sourceExtractor,
     datasetStore,
     diffEngine,
     newsWatcher,

@@ -57,6 +57,8 @@ export class MinecraftDataExtractor {
       textures,
       models,
       palettes,
+      itemStats: [],
+      blockProperties: [],
     };
   }
 

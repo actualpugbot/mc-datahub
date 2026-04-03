@@ -138,6 +138,74 @@ export interface ItemDefinition {
   raw: JsonValue;
 }
 
+export interface ItemFoodStats {
+  reference: string;
+  consumable?: string;
+  nutrition?: number;
+  saturationModifier?: number;
+  alwaysEdible?: boolean;
+}
+
+export interface ItemToolStats {
+  kind: "sword" | "pickaxe" | "axe" | "shovel" | "hoe" | "spear";
+  material: string;
+  durability?: number;
+  miningSpeed?: number;
+  enchantability?: number;
+  attackDamage?: number;
+  attackSpeed?: number;
+}
+
+export interface ItemArmorStats {
+  category: "humanoid" | "wolf" | "horse" | "nautilus";
+  material: string;
+  type?: "helmet" | "chestplate" | "leggings" | "boots" | "body";
+  durability?: number;
+  defense?: number;
+  enchantability?: number;
+  toughness?: number;
+  knockbackResistance?: number;
+}
+
+export interface ItemStatDefinition {
+  id: string;
+  sourcePath: string;
+  sourceSymbol: string;
+  registration: "item" | "block";
+  stackSize: number;
+  durability?: number;
+  rarity: "common" | "uncommon" | "rare" | "epic";
+  fireResistant: boolean;
+  food?: ItemFoodStats;
+  tool?: ItemToolStats;
+  armor?: ItemArmorStats;
+}
+
+export interface BlockLightEmission {
+  kind: "constant" | "lit" | "dynamic";
+  value?: number;
+  expression?: string;
+}
+
+export interface BlockPropertyDefinition {
+  id: string;
+  sourcePath: string;
+  sourceSymbol: string;
+  copiedFrom?: string;
+  destroyTime?: number;
+  explosionResistance?: number;
+  requiresCorrectToolForDrops: boolean;
+  ignitedByLava: boolean;
+  randomTicks: boolean;
+  noCollision: boolean;
+  replaceable: boolean;
+  mapColor?: string;
+  instrument?: string;
+  soundType?: string;
+  pushReaction?: string;
+  lightEmission?: BlockLightEmission;
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -152,6 +220,8 @@ export interface VersionDataset {
   textures: TextureDefinition[];
   models: ModelDefinition[];
   palettes: PaletteDefinition[];
+  itemStats: ItemStatDefinition[];
+  blockProperties: BlockPropertyDefinition[];
 }
 
 export interface CollectionChange<T> {
@@ -177,6 +247,8 @@ export interface VersionDiff {
   textures: CollectionDiff<TextureDefinition>;
   models: CollectionDiff<ModelDefinition>;
   palettes: CollectionDiff<PaletteDefinition>;
+  itemStats: CollectionDiff<ItemStatDefinition>;
+  blockProperties: CollectionDiff<BlockPropertyDefinition>;
 }
 
 export interface ToolStepResult {

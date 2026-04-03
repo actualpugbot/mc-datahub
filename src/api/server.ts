@@ -40,6 +40,8 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
             "GET /versions",
             "GET /versions/:version/blocks?id=&q=",
             "GET /versions/:version/items?id=&q=",
+            "GET /versions/:version/item-stats?id=&q=",
+            "GET /versions/:version/block-properties?id=&q=",
             "GET /versions/:version/recipes?id=&q=",
             "GET /versions/:version/palettes?id=&q=",
           ],
@@ -61,6 +63,16 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
 
         if (collection === "items") {
           sendJson(response, 200, { version, items: filterCollection(dataset.items, id, query) });
+          return;
+        }
+
+        if (collection === "item-stats") {
+          sendJson(response, 200, { version, itemStats: filterCollection(dataset.itemStats, id, query) });
+          return;
+        }
+
+        if (collection === "block-properties") {
+          sendJson(response, 200, { version, blockProperties: filterCollection(dataset.blockProperties, id, query) });
           return;
         }
 

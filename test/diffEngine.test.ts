@@ -16,6 +16,8 @@ function createDataset(version: string): VersionDataset {
     textures: [],
     models: [],
     palettes: [],
+    itemStats: [],
+    blockProperties: [],
   };
 }
 

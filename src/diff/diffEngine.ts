@@ -1,9 +1,11 @@
 import { stableJsonHash } from "../core/hash.js";
 import type {
+  BlockPropertyDefinition,
   BlockDefinition,
   CollectionChange,
   CollectionDiff,
   ItemDefinition,
+  ItemStatDefinition,
   ModelDefinition,
   PaletteDefinition,
   RecipeDefinition,
@@ -28,6 +30,8 @@ export class DiffEngine {
       textures: this.diffCollection<TextureDefinition>(from.textures, to.textures),
       models: this.diffCollection<ModelDefinition>(from.models, to.models),
       palettes: this.diffCollection<PaletteDefinition>(from.palettes, to.palettes),
+      itemStats: this.diffCollection<ItemStatDefinition>(from.itemStats, to.itemStats),
+      blockProperties: this.diffCollection<BlockPropertyDefinition>(from.blockProperties, to.blockProperties),
     };
   }
 

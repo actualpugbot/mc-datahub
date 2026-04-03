@@ -117,6 +117,8 @@ async function main(): Promise<void> {
             diffSummary: {
               blocks: summarizeCollection(diff.blocks),
               items: summarizeCollection(diff.items),
+              itemStats: summarizeCollection(diff.itemStats),
+              blockProperties: summarizeCollection(diff.blockProperties),
               recipes: summarizeCollection(diff.recipes),
               textures: summarizeCollection(diff.textures),
               models: summarizeCollection(diff.models),

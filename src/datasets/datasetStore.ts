@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ensureDir, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
-import type { PaletteDefinition, TextureDefinition, VersionDataset, VersionDiff } from "../domain/types.js";
+import type { BlockPropertyDefinition, ItemStatDefinition, PaletteDefinition, TextureDefinition, VersionDataset, VersionDiff } from "../domain/types.js";
 
 export class DatasetStore {
   constructor(
@@ -27,6 +27,8 @@ export class DatasetStore {
       writeJsonFile(join(directory, "dataset.json"), dataset),
       writeJsonFile(join(directory, "blocks.json"), dataset.blocks),
       writeJsonFile(join(directory, "items.json"), dataset.items),
+      writeJsonFile(join(directory, "item-stats.json"), dataset.itemStats),
+      writeJsonFile(join(directory, "block-properties.json"), dataset.blockProperties),
       writeJsonFile(join(directory, "recipes.json"), dataset.recipes),
       writeJsonFile(join(directory, "textures.json"), dataset.textures),
       writeJsonFile(join(directory, "models.json"), dataset.models),
@@ -38,7 +40,13 @@ export class DatasetStore {
   }
 
   async loadDataset(version: string): Promise<VersionDataset> {
-    const dataset = await readJsonFile<VersionDataset & { palettes?: PaletteDefinition[] }>(
+    const dataset = await readJsonFile<
+      VersionDataset & {
+        palettes?: PaletteDefinition[];
+        itemStats?: ItemStatDefinition[];
+        blockProperties?: BlockPropertyDefinition[];
+      }
+    >(
       join(datasetVersionDir(this.paths, version), "dataset.json"),
     );
 
@@ -49,6 +57,8 @@ export class DatasetStore {
         imagePath: texture.imagePath ?? `images/${texture.sourcePath.slice("assets/minecraft/textures/".length)}`,
       })),
       palettes: dataset.palettes ?? [],
+      itemStats: dataset.itemStats ?? [],
+      blockProperties: dataset.blockProperties ?? [],
     };
   }
 

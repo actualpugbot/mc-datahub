@@ -9,6 +9,7 @@
 - Downloads client and server JARs into versioned workspace directories.
 - Orchestrates a decompilation pipeline that can plug into Tiny Remapper and Vineflower.
 - Extracts normalized block, item, recipe, model, and texture datasets from vanilla assets and data packs.
+- Derives source-based `item-stats` and `block-properties` datasets from decompiled client source when available.
 - Exports extracted texture PNGs alongside each versioned dataset.
 - Derives extracted and curated palette presets from vanilla trim palettes and biome colormaps.
 - Compares datasets between versions and writes structured diffs.
@@ -27,7 +28,9 @@ workspace/
   datasets/<version>/
     dataset.json
     blocks.json
+    block-properties.json
     items.json
+    item-stats.json
     recipes.json
     textures.json
     images/             Extracted texture PNG files
@@ -36,6 +39,22 @@ workspace/
   diffs/
   state.json
 ```
+
+## Codex-Friendly Summary
+
+If another project or Codex agent wants Minecraft data without re-implementing extraction, `mc-datahub` can provide these versioned outputs under `workspace/datasets/<version>/`:
+
+- `dataset.json`: one combined snapshot with every extracted collection
+- `blocks.json`: block ids, tags, blockstate/model references, and texture references
+- `items.json`: item ids, tags, recipe links, model references, and texture references
+- `recipes.json`: normalized vanilla recipe data
+- `models.json`: model parent chains and texture references
+- `textures.json` plus `images/`: texture metadata and exported PNG files
+- `palettes.json`: extracted and curated color palettes
+- `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
+- `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
+
+For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `recipes`, and `palettes`.
 
 ## CLI
 
@@ -61,6 +80,11 @@ npm run cli -- api serve --port 4000
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 
 `fetch latest` now resolves the latest release and latest snapshot directly from Mojang's manifest, so `--kind any` processes both by default.
+
+When a decompiled client source tree is available under `workspace/versions/<version>/decompiled/client`, `process version` also writes:
+
+- `item-stats.json` with source-derived stack sizes, durability, food values, rarity, fire resistance, and tool or armor stats
+- `block-properties.json` with source-derived destroy time, explosion resistance, light emission, push reaction, and related flags
 
 During development:
 
@@ -119,6 +143,8 @@ npm run cli -- toolchain doctor
 ```
 
 If no toolchain is configured, `process version` still downloads, extracts, and exports datasets while recording the decompile step as skipped with a more specific reason.
+
+Today the extra source-derived datasets only depend on readable decompiled client source, so the current Vineflower setup is enough to start extracting additional data. Tiny Remapper is still useful if you want a fuller remap step before decompilation.
 
 ## Environment Variables
 
