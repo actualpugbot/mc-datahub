@@ -12,6 +12,7 @@ import type { MappingProvider } from "../domain/types.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
+import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 
 export interface ProcessVersionOptions {
@@ -27,6 +28,7 @@ export class ProcessVersionWorkflow {
     private readonly mappingResolver: MappingResolver,
     private readonly decompilePipeline: DecompilePipeline,
     private readonly extractor: MinecraftDataExtractor,
+    private readonly mobSoundExtractor: MobSoundExtractor,
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
@@ -76,10 +78,18 @@ export class ProcessVersionWorkflow {
     }
 
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
+    const mobSoundData = await this.mobSoundExtractor.extract(
+      manifestEntry.id,
+      metadata,
+      sources,
+      join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client"),
+    );
     const sourceDerived = await this.sourceExtractor.extract(join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client"));
     dataset.provenance.mappingProvider = options.mappingProvider;
     dataset.itemStats = sourceDerived.itemStats;
     dataset.blockProperties = sourceDerived.blockProperties;
+    dataset.mobSounds = mobSoundData.mobSounds;
+    dataset.resourcePack = mobSoundData.resourcePack;
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);
 

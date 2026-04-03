@@ -206,6 +206,52 @@ export interface BlockPropertyDefinition {
   lightEmission?: BlockLightEmission;
 }
 
+export interface ResourcePackSupportedFormats {
+  min?: number;
+  max?: number;
+}
+
+export interface ResourcePackDefinition {
+  packFormat: number;
+  description?: string;
+  supportedFormats?: ResourcePackSupportedFormats;
+}
+
+export interface MobSoundVariantDefinition {
+  id: string;
+  soundPath: string;
+  assetPath: string;
+  url: string;
+  hash: string;
+  size: number;
+  stream: boolean;
+  preload: boolean;
+  volume: number;
+  pitch: number;
+  weight: number;
+  attenuationDistance?: number;
+}
+
+export interface MobSoundEventDefinition {
+  id: string;
+  subtitleKey?: string;
+  subtitle?: string;
+  variants: MobSoundVariantDefinition[];
+}
+
+export interface MobSoundDefinition {
+  id: string;
+  localId: string;
+  soundId: string;
+  displayName: string;
+  translationKey: string;
+  category: string;
+  mobCategory: string;
+  soundEventCount: number;
+  soundVariantCount: number;
+  soundEvents: MobSoundEventDefinition[];
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -222,6 +268,8 @@ export interface VersionDataset {
   palettes: PaletteDefinition[];
   itemStats: ItemStatDefinition[];
   blockProperties: BlockPropertyDefinition[];
+  mobSounds: MobSoundDefinition[];
+  resourcePack?: ResourcePackDefinition;
 }
 
 export interface CollectionChange<T> {
@@ -249,6 +297,7 @@ export interface VersionDiff {
   palettes: CollectionDiff<PaletteDefinition>;
   itemStats: CollectionDiff<ItemStatDefinition>;
   blockProperties: CollectionDiff<BlockPropertyDefinition>;
+  mobSounds: CollectionDiff<MobSoundDefinition>;
 }
 
 export interface ToolStepResult {

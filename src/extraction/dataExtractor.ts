@@ -59,6 +59,7 @@ export class MinecraftDataExtractor {
       palettes,
       itemStats: [],
       blockProperties: [],
+      mobSounds: [],
     };
   }
 

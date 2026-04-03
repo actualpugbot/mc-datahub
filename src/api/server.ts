@@ -42,6 +42,7 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
             "GET /versions/:version/items?id=&q=",
             "GET /versions/:version/item-stats?id=&q=",
             "GET /versions/:version/block-properties?id=&q=",
+            "GET /versions/:version/mob-sounds?id=&q=",
             "GET /versions/:version/recipes?id=&q=",
             "GET /versions/:version/palettes?id=&q=",
           ],
@@ -73,6 +74,11 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
 
         if (collection === "block-properties") {
           sendJson(response, 200, { version, blockProperties: filterCollection(dataset.blockProperties, id, query) });
+          return;
+        }
+
+        if (collection === "mob-sounds") {
+          sendJson(response, 200, { version, mobSounds: filterMobSounds(dataset.mobSounds, id, query) });
           return;
         }
 
@@ -132,6 +138,32 @@ function filterCollection<T extends { id: string }>(entries: T[], id?: string, q
   if (query) {
     const normalizedQuery = query.toLowerCase();
     return entries.filter((entry) => entry.id.toLowerCase().includes(normalizedQuery));
+  }
+
+  return entries;
+}
+
+function filterMobSounds<
+  T extends {
+    id: string;
+    localId: string;
+    displayName: string;
+    category: string;
+    soundId: string;
+  },
+>(entries: T[], id?: string, query?: string): T[] {
+  if (id) {
+    const normalizedId = normalizeMinecraftId(id);
+    return entries.filter((entry) => entry.id === normalizedId || normalizeMinecraftId(entry.localId) === normalizedId);
+  }
+
+  if (query) {
+    const normalizedQuery = query.toLowerCase();
+    return entries.filter((entry) =>
+      [entry.id, entry.localId, entry.displayName, entry.category, entry.soundId].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
   }
 
   return entries;

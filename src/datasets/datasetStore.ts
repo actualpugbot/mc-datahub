@@ -4,7 +4,16 @@ import { join } from "node:path";
 import { ensureDir, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
-import type { BlockPropertyDefinition, ItemStatDefinition, PaletteDefinition, TextureDefinition, VersionDataset, VersionDiff } from "../domain/types.js";
+import type {
+  BlockPropertyDefinition,
+  ItemStatDefinition,
+  MobSoundDefinition,
+  PaletteDefinition,
+  ResourcePackDefinition,
+  TextureDefinition,
+  VersionDataset,
+  VersionDiff,
+} from "../domain/types.js";
 
 export class DatasetStore {
   constructor(
@@ -33,6 +42,12 @@ export class DatasetStore {
       writeJsonFile(join(directory, "textures.json"), dataset.textures),
       writeJsonFile(join(directory, "models.json"), dataset.models),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
+      writeJsonFile(join(directory, "mob-sounds.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        resourcePack: dataset.resourcePack,
+        mobs: dataset.mobSounds,
+      }),
     ]);
 
     this.logger.debug(`Saved dataset for ${dataset.version} to ${directory}.`);
@@ -45,6 +60,8 @@ export class DatasetStore {
         palettes?: PaletteDefinition[];
         itemStats?: ItemStatDefinition[];
         blockProperties?: BlockPropertyDefinition[];
+        mobSounds?: MobSoundDefinition[];
+        resourcePack?: ResourcePackDefinition;
       }
     >(
       join(datasetVersionDir(this.paths, version), "dataset.json"),
@@ -59,6 +76,8 @@ export class DatasetStore {
       palettes: dataset.palettes ?? [],
       itemStats: dataset.itemStats ?? [],
       blockProperties: dataset.blockProperties ?? [],
+      mobSounds: dataset.mobSounds ?? [],
+      resourcePack: dataset.resourcePack,
     };
   }
 

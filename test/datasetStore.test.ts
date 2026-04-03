@@ -38,6 +38,7 @@ describe("dataset store", () => {
       palettes: [],
       itemStats: [],
       blockProperties: [],
+      mobSounds: [],
     };
 
     await store.saveDataset(dataset, archive);
