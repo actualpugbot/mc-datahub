@@ -1,4 +1,6 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
+import { buildMobSoundExplorerPayload, ApiRequestError } from "./mobSoundExplorer.js";
+import { renderMobSoundExplorerPage } from "./mobSoundExplorerPage.js";
 import { normalizeMinecraftId } from "../extraction/normalizers.js";
 import type { DatasetStore } from "../datasets/datasetStore.js";
 import type { AppConfig } from "../config.js";
@@ -20,6 +22,20 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
     const segments = requestUrl.pathname.split("/").filter(Boolean);
 
     try {
+      if (requestUrl.pathname === "/mob-sounds/explorer") {
+        sendText(response, 200, renderMobSoundExplorerPage(), "text/html; charset=utf-8");
+        return;
+      }
+
+      if (requestUrl.pathname === "/mob-sounds/explorer/data") {
+        const payload = await buildMobSoundExplorerPayload(datasetStore, config.workspace, {
+          version: requestUrl.searchParams.get("version") ?? undefined,
+          compareToVersion: requestUrl.searchParams.get("compareTo") ?? undefined,
+        });
+        sendJson(response, 200, payload);
+        return;
+      }
+
       if (requestUrl.pathname === "/health") {
         sendJson(response, 200, { ok: true, timestamp: new Date().toISOString() });
         return;
@@ -38,6 +54,8 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
           routes: [
             "GET /health",
             "GET /versions",
+            "GET /mob-sounds/explorer",
+            "GET /mob-sounds/explorer/data?version=&compareTo=",
             "GET /versions/:version/blocks?id=&q=",
             "GET /versions/:version/items?id=&q=",
             "GET /versions/:version/item-stats?id=&q=",
@@ -102,7 +120,11 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
       sendJson(response, 404, { error: "Not found" });
     } catch (error) {
       const statusCode =
-        error && typeof error === "object" && "code" in error && error.code === "ENOENT" ? 404 : 500;
+        error instanceof ApiRequestError
+          ? error.statusCode
+          : error && typeof error === "object" && "code" in error && error.code === "ENOENT"
+            ? 404
+            : 500;
       sendJson(response, statusCode, {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -230,4 +252,10 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.end(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function sendText(response: ServerResponse, statusCode: number, value: string, contentType: string): void {
+  response.statusCode = statusCode;
+  response.setHeader("content-type", contentType);
+  response.end(value);
 }

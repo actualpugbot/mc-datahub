@@ -60,6 +60,8 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 
 For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `mob-images`, `mob-sounds`, `recipes`, and `palettes`.
 
+For quick manual inspection, the API also serves a simple mob sound comparison page at `GET /mob-sounds/explorer`, which lets you compare extracted mob sounds against the saved minecraft.wiki snapshot and diff one processed version against another.
+
 ## CLI
 
 Build first:
@@ -105,6 +107,41 @@ If you want the shortest possible form for repeated use, link the package once a
 npm link
 mc-datahub fetch latest
 ```
+
+## Preparing Mob Sound Exports
+
+Use a two-step flow when another project needs both the mob sound metadata JSON and the actual `.ogg` files:
+
+1. Run `process version` for the target version. This writes `workspace/datasets/<version>/mob-sounds.json` as part of the normal dataset output.
+2. Run `dump mob-audio` for the same version. This reads `mob-sounds.json` when it is available, deduplicates the referenced sound assets, and downloads the `.ogg` files into `workspace/datasets/<version>/mob-audio/` by default.
+
+Example for the latest release:
+
+```bash
+npm run cli -- process version latest-release
+npm run cli -- dump mob-audio latest-release
+```
+
+That leaves you with:
+
+```text
+workspace/datasets/<resolved-version>/mob-sounds.json
+workspace/datasets/<resolved-version>/mob-audio/**/*.ogg
+```
+
+`dump mob-audio` is safe to rerun. Existing files are reused when their SHA-1 matches Mojang's asset metadata, so the command only downloads files that are missing or stale.
+
+For downstream projects, keep the JSON and audio handoff explicit. For example, to refresh `~/dev/mob-dub` with version `26.1.1`:
+
+```bash
+cd ~/dev/mob-dub
+node scripts/sync-mob-data.mjs 26.1.1
+
+cd ~/dev/mc-datahub
+npm run cli -- dump mob-audio 26.1.1 --output ~/dev/mob-dub/public/data/mob-audio/26.1.1
+```
+
+The `mob-dub` sync step copies `mob-sounds.json` into `public/data/mob-sounds.json`, while the `dump mob-audio` step gives it a versioned directory of raw vanilla `.ogg` files under `public/data/mob-audio/`.
 
 ## Decompilation Tooling
 
