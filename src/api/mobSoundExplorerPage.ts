@@ -1,11 +1,22 @@
-export function renderMobSoundExplorerPage(): string {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>mc-datahub Mob Sound Explorer</title>
-    <style>
+type ExplorerMode = "wiki" | "versions";
+
+interface ExplorerPageOptions {
+  mode: ExplorerMode;
+  pageTitle: string;
+  heroTitle: string;
+  heroDescription: string;
+  filterLabel: string;
+  filterOptions: Array<{ value: string; label: string }>;
+  searchPlaceholder: string;
+  listDefaultSubtitle: string;
+  primaryPanelTitle: string;
+  primaryPanelSubtitle: string;
+  secondaryPanelTitle: string;
+  secondaryPanelSubtitle: string;
+  dataPath: string;
+}
+
+const BASE_STYLES = `
       :root {
         color-scheme: light;
         --page: oklch(0.97 0.012 96);
@@ -39,6 +50,7 @@ export function renderMobSoundExplorerPage(): string {
 
       a {
         color: inherit;
+        text-decoration: none;
       }
 
       button,
@@ -55,6 +67,31 @@ export function renderMobSoundExplorerPage(): string {
 
       .hero {
         padding: clamp(1.25rem, 2vw, 2rem) clamp(1rem, 2.4vw, 2.5rem) 0;
+      }
+
+      .top-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-bottom: 1rem;
+      }
+
+      .nav-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.4rem;
+        padding: 0.5rem 0.85rem;
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--panel) 82%, white 18%);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        box-shadow: var(--shadow);
+      }
+
+      .nav-link.is-active {
+        background: color-mix(in oklab, var(--accent-soft) 55%, white 45%);
+        color: color-mix(in oklab, var(--accent) 72%, black 28%);
+        border-color: color-mix(in oklab, var(--accent) 36%, white 64%);
       }
 
       .hero h1 {
@@ -76,7 +113,7 @@ export function renderMobSoundExplorerPage(): string {
         top: 0;
         z-index: 10;
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
         gap: 0.75rem;
         padding: 1rem clamp(1rem, 2.4vw, 2.5rem);
         background: color-mix(in oklab, var(--page) 85%, white 15%);
@@ -109,23 +146,32 @@ export function renderMobSoundExplorerPage(): string {
 
       .summary,
       .coverage,
-      .workspace {
+      .workspace,
+      .landing-grid {
         padding-inline: clamp(1rem, 2.4vw, 2.5rem);
       }
 
-      .summary {
+      .summary,
+      .landing-grid {
         padding-top: 1rem;
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
         gap: 0.8rem;
       }
 
-      .metric {
-        background: color-mix(in oklab, var(--panel) 88%, white 12%);
+      .metric,
+      .link-card,
+      .coverage-group,
+      .list-panel,
+      .detail-panel {
+        background: color-mix(in oklab, var(--panel) 90%, white 10%);
         border: 1px solid var(--border);
         border-radius: 1rem;
-        padding: 1rem 1.05rem;
         box-shadow: var(--shadow);
+      }
+
+      .metric {
+        padding: 1rem 1.05rem;
       }
 
       .metric strong {
@@ -148,13 +194,11 @@ export function renderMobSoundExplorerPage(): string {
       }
 
       .coverage-group {
-        background: color-mix(in oklab, var(--panel) 90%, white 10%);
-        border: 1px solid var(--border);
-        border-radius: 1rem;
         padding: 0.95rem 1rem;
       }
 
-      .coverage-group h2 {
+      .coverage-group h2,
+      .link-card h2 {
         margin: 0 0 0.65rem;
         font-size: 0.95rem;
         letter-spacing: 0.01em;
@@ -189,10 +233,7 @@ export function renderMobSoundExplorerPage(): string {
 
       .list-panel,
       .detail-panel {
-        background: color-mix(in oklab, var(--panel) 92%, white 8%);
-        border: 1px solid var(--border);
         border-radius: 1.15rem;
-        box-shadow: var(--shadow);
       }
 
       .list-panel {
@@ -212,10 +253,46 @@ export function renderMobSoundExplorerPage(): string {
       }
 
       .list-panel p,
-      .detail-panel p {
+      .detail-panel p,
+      .link-card p {
         margin: 0.35rem 0 0;
         color: var(--muted);
         line-height: 1.45;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+      }
+
+      .landing-grid {
+        padding-bottom: 2rem;
+      }
+
+      .link-card {
+        padding: 1rem 1.05rem;
+        transition: transform 180ms ease, border-color 180ms ease;
+      }
+
+      .link-card:hover,
+      .link-card:focus-visible {
+        transform: translateY(-2px);
+        border-color: color-mix(in oklab, var(--accent) 34%, white 66%);
+        outline: none;
+      }
+
+      .link-kicker {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2rem;
+        margin-top: 1rem;
+        color: color-mix(in oklab, var(--accent) 72%, black 28%);
+        font-weight: 600;
+      }
+
+      .panel-body {
+        padding: 0 1rem 1rem;
       }
 
       .mob-list {
@@ -291,33 +368,31 @@ export function renderMobSoundExplorerPage(): string {
         color: var(--muted);
       }
 
-      .badge-added {
+      .badge-added,
+      .badge-exact {
         background: var(--accent-soft);
         border-color: color-mix(in oklab, var(--accent) 35%, white 65%);
         color: color-mix(in oklab, var(--accent) 72%, black 28%);
       }
 
-      .badge-changed {
+      .badge-changed,
+      .badge-partial {
         background: var(--warning-soft);
         border-color: color-mix(in oklab, var(--warning) 38%, white 62%);
         color: color-mix(in oklab, var(--warning) 72%, black 28%);
       }
 
-      .badge-removed {
+      .badge-removed,
+      .badge-local-only {
         background: var(--danger-soft);
         border-color: color-mix(in oklab, var(--danger) 38%, white 62%);
         color: color-mix(in oklab, var(--danger) 72%, black 28%);
       }
 
-      .detail-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 1rem;
-        padding: 1rem;
-      }
-
-      .panel-body {
-        padding: 0 1rem 1rem;
+      .badge-unchanged {
+        background: var(--panel-muted);
+        border-color: var(--border);
+        color: var(--muted);
       }
 
       .section {
@@ -434,19 +509,13 @@ export function renderMobSoundExplorerPage(): string {
       }
 
       @media (max-width: 1100px) {
-        .summary {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
         .detail-grid {
           grid-template-columns: 1fr;
         }
       }
 
       @media (max-width: 820px) {
-        .controls,
-        .workspace,
-        .summary {
+        .workspace {
           grid-template-columns: 1fr;
         }
 
@@ -454,16 +523,132 @@ export function renderMobSoundExplorerPage(): string {
           max-height: none;
         }
       }
+`;
+
+export function renderMobSoundExplorerPage(): string {
+  return renderMobSoundExplorerLandingPage();
+}
+
+export function renderMobSoundExplorerLandingPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mc-datahub Mob Sound Explorer</title>
+    <style>
+${BASE_STYLES}
     </style>
   </head>
   <body>
     <div class="shell">
       <section class="hero">
+        ${renderTopNav()}
         <h1>Mob Sound Explorer</h1>
         <p>
-          Compare extracted mob sounds against the saved minecraft.wiki snapshot, then diff one processed
-          version against another to see which mobs or sound variants changed.
+          Pick the comparison view you want. The wiki explorer focuses on one processed version against the
+          saved minecraft.wiki snapshot, while the version explorer stays entirely local and diffs two
+          processed datasets.
         </p>
+      </section>
+
+      <section class="landing-grid">
+        <a class="link-card" href="/mob-sounds/explorer/wiki">
+          <h2>Wiki Comparison</h2>
+          <p>
+            Inspect one version's extracted mob sounds next to the saved minecraft.wiki category alignment,
+            coverage gaps, and playable wiki files.
+          </p>
+          <span class="link-kicker">Open the wiki explorer</span>
+        </a>
+
+        <a class="link-card" href="/mob-sounds/explorer/versions">
+          <h2>Version Comparison</h2>
+          <p>
+            Diff two processed versions locally to see which mobs were added, removed, or changed and how
+            their sound events shifted between versions.
+          </p>
+          <span class="link-kicker">Open the version explorer</span>
+        </a>
+      </section>
+    </div>
+  </body>
+</html>
+`;
+}
+
+export function renderMobSoundWikiExplorerPage(): string {
+  return renderExplorerPage({
+    mode: "wiki",
+    pageTitle: "mc-datahub Mob Sound Wiki Explorer",
+    heroTitle: "Mob Sound Wiki Explorer",
+    heroDescription:
+      "Review one processed version against the saved minecraft.wiki snapshot to see matched categories, local-only mobs, and any wiki file coverage gaps.",
+    filterLabel: "Coverage Filter",
+    filterOptions: [
+      { value: "all", label: "All mobs" },
+      { value: "exact", label: "Exact matches" },
+      { value: "partial", label: "Partial matches" },
+      { value: "local-only", label: "No wiki match" },
+    ],
+    searchPlaceholder: "Search mobs, sound ids, or wiki categories",
+    listDefaultSubtitle: "Choose a mob to inspect extracted sounds beside the saved wiki category.",
+    primaryPanelTitle: "Extracted Data",
+    primaryPanelSubtitle: "Sound events and Mojang asset URLs from the selected dataset.",
+    secondaryPanelTitle: "Minecraft Wiki",
+    secondaryPanelSubtitle: "Matched category coverage plus playable files from the saved wiki snapshot.",
+    dataPath: "/mob-sounds/explorer/wiki/data",
+  });
+}
+
+export function renderMobSoundVersionExplorerPage(): string {
+  return renderExplorerPage({
+    mode: "versions",
+    pageTitle: "mc-datahub Mob Sound Version Explorer",
+    heroTitle: "Mob Sound Version Explorer",
+    heroDescription:
+      "Compare two processed versions locally to see which mobs were added, removed, or changed and where sound events or variants shifted between versions.",
+    filterLabel: "Diff Filter",
+    filterOptions: [
+      { value: "all", label: "All mobs" },
+      { value: "added", label: "Added only" },
+      { value: "changed", label: "Changed only" },
+      { value: "removed", label: "Removed only" },
+      { value: "unchanged", label: "Unchanged only" },
+    ],
+    searchPlaceholder: "Search mobs or sound ids",
+    listDefaultSubtitle: "Choose a mob to inspect the current dataset beside the comparison version.",
+    primaryPanelTitle: "Current Version",
+    primaryPanelSubtitle: "Sound events and asset URLs from the selected version.",
+    secondaryPanelTitle: "Compared Version",
+    secondaryPanelSubtitle: "The matching mob from the selected comparison dataset, when one exists.",
+    dataPath: "/mob-sounds/explorer/versions/data",
+  });
+}
+
+function renderExplorerPage(options: ExplorerPageOptions): string {
+  const clientConfig = JSON.stringify({
+    mode: options.mode,
+    dataPath: options.dataPath,
+    listDefaultSubtitle: options.listDefaultSubtitle,
+  });
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${options.pageTitle}</title>
+    <style>
+${BASE_STYLES}
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        ${renderTopNav(options.mode)}
+        <h1>${options.heroTitle}</h1>
+        <p>${options.heroDescription}</p>
       </section>
 
       <section class="controls">
@@ -471,34 +656,36 @@ export function renderMobSoundExplorerPage(): string {
           <label for="version">Version</label>
           <select id="version"></select>
         </div>
-        <div class="field">
+        ${
+          options.mode === "versions"
+            ? `<div class="field">
           <label for="compareTo">Compare To</label>
           <select id="compareTo"></select>
-        </div>
+        </div>`
+            : ""
+        }
         <div class="field">
-          <label for="status">Diff Filter</label>
+          <label for="status">${options.filterLabel}</label>
           <select id="status">
-            <option value="all">All mobs</option>
-            <option value="added">Added only</option>
-            <option value="changed">Changed only</option>
-            <option value="removed">Removed only</option>
-            <option value="unchanged">Unchanged only</option>
+            ${options.filterOptions
+              .map((filterOption) => `<option value="${filterOption.value}">${filterOption.label}</option>`)
+              .join("")}
           </select>
         </div>
         <div class="field">
           <label for="search">Search</label>
-          <input id="search" type="search" placeholder="Search mobs, sound ids, or wiki categories" />
+          <input id="search" type="search" placeholder="${options.searchPlaceholder}" />
         </div>
       </section>
 
       <section id="summary" class="summary"></section>
-      <section id="coverage" class="coverage"></section>
+      <section id="coverage" class="coverage" hidden></section>
 
       <section class="workspace">
         <aside class="list-panel">
           <header>
             <h2 id="listTitle">Mobs</h2>
-            <p id="listSubtitle">Choose a mob to inspect extracted and wiki sound references side by side.</p>
+            <p id="listSubtitle">${options.listDefaultSubtitle}</p>
           </header>
           <div id="listStatus" class="panel-body"></div>
           <ul id="mobList" class="mob-list"></ul>
@@ -507,24 +694,40 @@ export function renderMobSoundExplorerPage(): string {
         <section class="detail-grid">
           <article class="detail-panel">
             <header>
-              <h2>Extracted Data</h2>
-              <p id="localSubtitle">Sound events and Mojang asset URLs from the selected dataset.</p>
+              <h2>${options.primaryPanelTitle}</h2>
+              <p>${options.primaryPanelSubtitle}</p>
             </header>
-            <div id="localPanel" class="panel-body"></div>
+            <div id="primaryPanel" class="panel-body"></div>
           </article>
 
           <article class="detail-panel">
             <header>
-              <h2>Minecraft Wiki</h2>
-              <p id="wikiSubtitle">Matched category coverage plus playable files from the saved wiki snapshot.</p>
+              <h2>${options.secondaryPanelTitle}</h2>
+              <p>${options.secondaryPanelSubtitle}</p>
             </header>
-            <div id="wikiPanel" class="panel-body"></div>
+            <div id="secondaryPanel" class="panel-body"></div>
           </article>
         </section>
       </section>
     </div>
 
-    <script type="module">
+    ${renderExplorerClientScript(clientConfig)}
+  </body>
+</html>
+`;
+}
+
+function renderTopNav(active?: ExplorerMode): string {
+  return `<nav class="top-nav">
+          <a class="nav-link${!active ? " is-active" : ""}" href="/mob-sounds/explorer">Pick a page</a>
+          <a class="nav-link${active === "wiki" ? " is-active" : ""}" href="/mob-sounds/explorer/wiki">Wiki comparison</a>
+          <a class="nav-link${active === "versions" ? " is-active" : ""}" href="/mob-sounds/explorer/versions">Version comparison</a>
+        </nav>`;
+}
+
+function renderExplorerClientScript(clientConfig: string): string {
+  return `<script type="module">
+      const explorerConfig = ${clientConfig};
       const listTitle = document.getElementById('listTitle');
       const listSubtitle = document.getElementById('listSubtitle');
       const listStatus = document.getElementById('listStatus');
@@ -535,8 +738,8 @@ export function renderMobSoundExplorerPage(): string {
       const summary = document.getElementById('summary');
       const coverage = document.getElementById('coverage');
       const mobList = document.getElementById('mobList');
-      const localPanel = document.getElementById('localPanel');
-      const wikiPanel = document.getElementById('wikiPanel');
+      const primaryPanel = document.getElementById('primaryPanel');
+      const secondaryPanel = document.getElementById('secondaryPanel');
 
       const params = new URLSearchParams(window.location.search);
       const state = {
@@ -544,7 +747,7 @@ export function renderMobSoundExplorerPage(): string {
         error: '',
         data: null,
         version: params.get('version') || '',
-        compareTo: params.get('compareTo') || '',
+        compareTo: explorerConfig.mode === 'versions' ? params.get('compareTo') || '' : '',
         status: params.get('status') || 'all',
         search: params.get('q') || '',
         selectedId: params.get('mob') || '',
@@ -561,10 +764,12 @@ export function renderMobSoundExplorerPage(): string {
         await loadData();
       });
 
-      compareToSelect.addEventListener('change', async function () {
-        state.compareTo = compareToSelect.value;
-        await loadData();
-      });
+      if (compareToSelect) {
+        compareToSelect.addEventListener('change', async function () {
+          state.compareTo = compareToSelect.value;
+          await loadData();
+        });
+      }
 
       statusSelect.addEventListener('change', function () {
         state.status = statusSelect.value;
@@ -585,12 +790,12 @@ export function renderMobSoundExplorerPage(): string {
         if (state.version) {
           query.set('version', state.version);
         }
-        if (state.compareTo) {
+        if (explorerConfig.mode === 'versions' && state.compareTo) {
           query.set('compareTo', state.compareTo);
         }
 
         try {
-          const url = '/mob-sounds/explorer/data' + (query.toString() ? '?' + query.toString() : '');
+          const url = explorerConfig.dataPath + (query.toString() ? '?' + query.toString() : '');
           const response = await fetch(url);
           if (!response.ok) {
             let message = 'Unable to load explorer data.';
@@ -606,9 +811,15 @@ export function renderMobSoundExplorerPage(): string {
 
           state.data = await response.json();
           state.version = state.data.version;
-          state.compareTo = state.data.compareToVersion || '';
+          state.compareTo = explorerConfig.mode === 'versions' ? state.data.compareToVersion || '' : '';
           if (!Array.isArray(state.data.rows)) {
             state.data.rows = [];
+          }
+          if (!Array.isArray(state.data.localOnlyMobs)) {
+            state.data.localOnlyMobs = [];
+          }
+          if (!Array.isArray(state.data.wikiOnlyCategories)) {
+            state.data.wikiOnlyCategories = [];
           }
           ensureSelectedRow();
         } catch (error) {
@@ -638,22 +849,25 @@ export function renderMobSoundExplorerPage(): string {
           .join('');
         versionSelect.value = state.version;
 
-        const compareOptions = ['<option value="">None</option>']
-          .concat(
-            versions.map(function (version) {
-              return '<option value="' + escapeAttribute(version) + '">' + escapeHtml(version) + '</option>';
-            }),
-          )
-          .join('');
-        compareToSelect.innerHTML = compareOptions;
-        compareToSelect.value = state.compareTo;
+        if (compareToSelect) {
+          const compareOptions = ['<option value="">Auto previous version</option>']
+            .concat(
+              versions.map(function (version) {
+                return '<option value="' + escapeAttribute(version) + '">' + escapeHtml(version) + '</option>';
+              }),
+            )
+            .join('');
+          compareToSelect.innerHTML = compareOptions;
+          compareToSelect.value = state.compareTo;
+        }
+
         statusSelect.value = state.status;
         searchInput.value = state.search;
       }
 
       function renderSummary() {
         if (state.loading) {
-          summary.innerHTML = '<div class="status is-loading">Loading explorer data…</div>';
+          summary.innerHTML = '<div class="status is-loading">Loading explorer data...</div>';
           return;
         }
 
@@ -667,7 +881,14 @@ export function renderMobSoundExplorerPage(): string {
           return;
         }
 
-        const items = [
+        summary.innerHTML =
+          explorerConfig.mode === 'wiki'
+            ? renderSummaryCards(buildWikiSummaryCards())
+            : renderSummaryCards(buildVersionSummaryCards());
+      }
+
+      function buildWikiSummaryCards() {
+        return [
           {
             label: 'Extracted mobs',
             value: state.data.summary.mobCount,
@@ -699,27 +920,104 @@ export function renderMobSoundExplorerPage(): string {
               ' wiki-only categories',
           },
           {
-            label: state.data.compareToVersion ? 'Version diff' : 'Snapshot',
-            value: state.data.compareToVersion
-              ? state.data.summary.diff.addedMobCount +
-                state.data.summary.diff.changedMobCount +
-                state.data.summary.diff.removedMobCount
-              : state.data.rows.length,
-            text: state.data.compareToVersion
-              ? 'Compared with ' +
-                state.data.compareToVersion +
-                ': ' +
-                state.data.summary.diff.addedSoundVariantCount +
-                ' added sound variants and ' +
-                state.data.summary.diff.removedSoundVariantCount +
-                ' removed'
-              : state.data.wikiSnapshotFetchedAt
-                ? 'Wiki snapshot saved at ' + escapeHtml(formatDate(state.data.wikiSnapshotFetchedAt))
-                : 'No saved wiki snapshot for this version',
+            label: 'Snapshot',
+            value: state.data.rows.length,
+            text: state.data.wikiSnapshotFetchedAt
+              ? 'Wiki snapshot saved at ' + formatDate(state.data.wikiSnapshotFetchedAt)
+              : 'No saved wiki snapshot for this version',
           },
         ];
+      }
 
-        summary.innerHTML = items
+      function buildVersionSummaryCards() {
+        const diff = state.data.summary.diff;
+        const compareSummary = summarizeCollection(function (row) {
+          return row.compareTo;
+        });
+        const changedMobCount = diff
+          ? diff.addedMobCount + diff.changedMobCount + diff.removedMobCount
+          : 0;
+
+        return [
+          {
+            label: state.data.version,
+            value: state.data.summary.mobCount,
+            text:
+              state.data.summary.soundEventCount +
+              ' sound events and ' +
+              state.data.summary.soundVariantCount +
+              ' sound variants in the selected version',
+          },
+          {
+            label: state.data.compareToVersion || 'Compared version',
+            value: state.data.compareToVersion ? compareSummary.mobCount : 0,
+            text: state.data.compareToVersion
+              ? compareSummary.soundEventCount +
+                ' sound events and ' +
+                compareSummary.soundVariantCount +
+                ' sound variants in ' +
+                state.data.compareToVersion
+              : 'No earlier processed version is available to compare.',
+          },
+          {
+            label: 'Changed mobs',
+            value: changedMobCount,
+            text: diff
+              ? diff.addedMobCount +
+                ' added, ' +
+                diff.changedMobCount +
+                ' changed, ' +
+                diff.removedMobCount +
+                ' removed, ' +
+                diff.unchangedMobCount +
+                ' unchanged'
+              : 'Select another processed version to diff against.',
+          },
+          {
+            label: 'Variant delta',
+            value: diff ? diff.addedSoundVariantCount + diff.removedSoundVariantCount : 0,
+            text: diff
+              ? '+' +
+                diff.addedSoundVariantCount +
+                ' added and -' +
+                diff.removedSoundVariantCount +
+                ' removed sound variants'
+              : 'No version diff is active.',
+          },
+        ];
+      }
+
+      function summarizeCollection(selectMob) {
+        if (!state.data) {
+          return {
+            mobCount: 0,
+            soundEventCount: 0,
+            soundVariantCount: 0,
+          };
+        }
+
+        return state.data.rows.reduce(
+          function (summaryState, row) {
+            const mob = selectMob(row);
+            if (!mob) {
+              return summaryState;
+            }
+
+            summaryState.mobCount += 1;
+            summaryState.soundEventCount += mob.soundEventCount;
+            summaryState.soundVariantCount += mob.soundVariantCount;
+            return summaryState;
+          },
+          {
+            mobCount: 0,
+            soundEventCount: 0,
+            soundVariantCount: 0,
+          },
+        );
+      }
+
+      function renderSummaryCards(items) {
+        return items
           .map(function (item) {
             return (
               '<article class="metric">' +
@@ -733,11 +1031,13 @@ export function renderMobSoundExplorerPage(): string {
       }
 
       function renderCoverage() {
-        if (!state.data || state.loading || state.error) {
+        if (explorerConfig.mode !== 'wiki' || !state.data || state.loading || state.error) {
+          coverage.hidden = true;
           coverage.innerHTML = '';
           return;
         }
 
+        coverage.hidden = false;
         coverage.innerHTML =
           renderCoverageGroup(
             'Local-only mobs',
@@ -775,16 +1075,16 @@ export function renderMobSoundExplorerPage(): string {
         ensureSelectedRow(filteredRows);
 
         listTitle.textContent = state.data
-          ? state.data.compareToVersion
+          ? explorerConfig.mode === 'versions' && state.data.compareToVersion
             ? 'Mobs in ' + state.data.version + ' vs ' + state.data.compareToVersion
             : 'Mobs in ' + state.data.version
           : 'Mobs';
         listSubtitle.textContent = state.data
           ? filteredRows.length + ' of ' + state.data.rows.length + ' rows shown'
-          : 'Choose a mob to inspect extracted and wiki sound references side by side.';
+          : explorerConfig.listDefaultSubtitle;
 
         if (state.loading) {
-          listStatus.innerHTML = '<div class="status is-loading">Loading rows…</div>';
+          listStatus.innerHTML = '<div class="status is-loading">Loading rows...</div>';
           mobList.innerHTML = '';
           return;
         }
@@ -805,40 +1105,7 @@ export function renderMobSoundExplorerPage(): string {
 
         mobList.innerHTML = filteredRows
           .map(function (row) {
-            const selectedClass = row.id === state.selectedId ? ' is-selected' : '';
-            const current = row.current || row.compareTo;
-            return (
-              '<li>' +
-              '<button class="mob-button' + selectedClass + '" data-row-id="' + escapeAttribute(row.id) + '">' +
-              '<div class="mob-topline">' +
-              '<span class="mob-name">' + escapeHtml(row.displayName) + '</span>' +
-              renderStatusBadge(row.status) +
-              '</div>' +
-              '<div class="mob-meta">' +
-              escapeHtml(current ? current.localId : row.id) +
-              ' · ' +
-              escapeHtml(
-                row.current
-                  ? row.current.soundEventCount + ' events / ' + row.current.soundVariantCount + ' variants'
-                  : row.compareTo
-                    ? 'missing in ' + state.data.version
-                    : 'no extracted sounds',
-              ) +
-              '</div>' +
-              '<div class="badge-row">' +
-              (row.wiki
-                ? renderNeutralBadge(row.wiki.coverage + ' wiki match')
-                : renderNeutralBadge('no wiki match')) +
-              (row.diff && row.diff.addedSoundPaths.length
-                ? renderNeutralBadge('+' + row.diff.addedSoundPaths.length + ' sounds')
-                : '') +
-              (row.diff && row.diff.removedSoundPaths.length
-                ? renderNeutralBadge('-' + row.diff.removedSoundPaths.length + ' sounds')
-                : '') +
-              '</div>' +
-              '</button>' +
-              '</li>'
-            );
+            return explorerConfig.mode === 'wiki' ? renderWikiListRow(row) : renderVersionListRow(row);
           })
           .join('');
 
@@ -850,31 +1117,130 @@ export function renderMobSoundExplorerPage(): string {
         });
       }
 
+      function renderWikiListRow(row) {
+        const selectedClass = row.id === state.selectedId ? ' is-selected' : '';
+        const mob = row.current || row.compareTo;
+        const wikiStatus = getWikiStatus(row);
+
+        return (
+          '<li>' +
+          '<button class="mob-button' + selectedClass + '" data-row-id="' + escapeAttribute(row.id) + '">' +
+          '<div class="mob-topline">' +
+          '<span class="mob-name">' + escapeHtml(row.displayName) + '</span>' +
+          renderStatusBadge(wikiStatus, getWikiStatusLabel(wikiStatus)) +
+          '</div>' +
+          '<div class="mob-meta">' +
+          escapeHtml(mob ? mob.localId : row.id) +
+          ' · ' +
+          escapeHtml(
+            mob
+              ? mob.soundEventCount + ' events / ' + mob.soundVariantCount + ' variants'
+              : 'no extracted sounds',
+          ) +
+          '</div>' +
+          '<div class="badge-row">' +
+          (row.wiki
+            ? renderNeutralBadge(row.wiki.matchType + ' mapping') +
+              renderNeutralBadge(row.wiki.wikiFileCount + ' wiki files') +
+              (row.wiki.unmatchedLocalSoundPaths.length
+                ? renderNeutralBadge(row.wiki.unmatchedLocalSoundPaths.length + ' local-only sounds')
+                : '')
+            : renderNeutralBadge('no wiki category')) +
+          '</div>' +
+          '</button>' +
+          '</li>'
+        );
+      }
+
+      function renderVersionListRow(row) {
+        const selectedClass = row.id === state.selectedId ? ' is-selected' : '';
+        const mob = row.current || row.compareTo;
+
+        return (
+          '<li>' +
+          '<button class="mob-button' + selectedClass + '" data-row-id="' + escapeAttribute(row.id) + '">' +
+          '<div class="mob-topline">' +
+          '<span class="mob-name">' + escapeHtml(row.displayName) + '</span>' +
+          renderStatusBadge(row.status, row.status) +
+          '</div>' +
+          '<div class="mob-meta">' +
+          escapeHtml(mob ? mob.localId : row.id) +
+          ' · ' +
+          escapeHtml(
+            row.current
+              ? row.current.soundEventCount + ' events / ' + row.current.soundVariantCount + ' variants'
+              : row.compareTo
+                ? 'missing in ' + state.data.version
+                : 'no extracted sounds',
+          ) +
+          '</div>' +
+          '<div class="badge-row">' +
+          (row.diff && row.diff.addedSoundPaths.length
+            ? renderNeutralBadge('+' + row.diff.addedSoundPaths.length + ' sounds')
+            : '') +
+          (row.diff && row.diff.removedSoundPaths.length
+            ? renderNeutralBadge('-' + row.diff.removedSoundPaths.length + ' sounds')
+            : '') +
+          (row.diff && row.diff.metadataChanged ? renderNeutralBadge('metadata changed') : '') +
+          '</div>' +
+          '</button>' +
+          '</li>'
+        );
+      }
+
       function renderDetails() {
         if (state.loading) {
-          localPanel.innerHTML = '<div class="status is-loading">Loading extracted sound details…</div>';
-          wikiPanel.innerHTML = '<div class="status is-loading">Loading wiki details…</div>';
+          primaryPanel.innerHTML = '<div class="status is-loading">Loading details...</div>';
+          secondaryPanel.innerHTML = '<div class="status is-loading">Loading details...</div>';
           return;
         }
 
         if (state.error) {
-          localPanel.innerHTML = '<div class="status is-error">' + escapeHtml(state.error) + '</div>';
-          wikiPanel.innerHTML = '<div class="status is-error">' + escapeHtml(state.error) + '</div>';
+          primaryPanel.innerHTML = '<div class="status is-error">' + escapeHtml(state.error) + '</div>';
+          secondaryPanel.innerHTML = '<div class="status is-error">' + escapeHtml(state.error) + '</div>';
           return;
         }
 
         const row = getSelectedRow();
         if (!row) {
-          localPanel.innerHTML = '<div class="empty">Select a mob from the left to inspect it.</div>';
-          wikiPanel.innerHTML = '<div class="empty">Select a mob from the left to inspect its matched wiki category.</div>';
+          primaryPanel.innerHTML = '<div class="empty">Select a mob from the left to inspect it.</div>';
+          secondaryPanel.innerHTML =
+            explorerConfig.mode === 'wiki'
+              ? '<div class="empty">Select a mob from the left to inspect its matched wiki category.</div>'
+              : '<div class="empty">Select a mob from the left to inspect the comparison version.</div>';
           return;
         }
 
-        localPanel.innerHTML = renderLocalPanel(row);
-        wikiPanel.innerHTML = renderWikiPanel(row);
+        primaryPanel.innerHTML =
+          explorerConfig.mode === 'wiki' ? renderWikiPrimaryPanel(row) : renderVersionPrimaryPanel(row);
+        secondaryPanel.innerHTML =
+          explorerConfig.mode === 'wiki' ? renderWikiSecondaryPanel(row) : renderVersionSecondaryPanel(row);
       }
 
-      function renderLocalPanel(row) {
+      function renderWikiPrimaryPanel(row) {
+        const mob = row.current || row.compareTo;
+        if (!mob) {
+          return '<div class="empty">No extracted sound metadata is available for this mob.</div>';
+        }
+
+        return (
+          '<section class="section">' +
+          '<div class="info-line"><div>' +
+          '<h3>' + escapeHtml(row.displayName) + '</h3>' +
+          '<p class="meta-kicker">' + escapeHtml(mob.id) + '</p>' +
+          '</div>' +
+          renderStatusBadge(getWikiStatus(row), getWikiStatusLabel(getWikiStatus(row))) +
+          '</div>' +
+          '</section>' +
+          '<section class="section">' +
+          '<h3>' + escapeHtml(state.data.version) + '</h3>' +
+          renderMobMeta(mob) +
+          renderSoundEventGroups(mob.soundEvents) +
+          '</section>'
+        );
+      }
+
+      function renderVersionPrimaryPanel(row) {
         const parts = [];
         parts.push('<section class="section">');
         parts.push('<div class="info-line"><div>');
@@ -884,7 +1250,7 @@ export function renderMobSoundExplorerPage(): string {
             escapeHtml(row.current ? row.current.id : row.compareTo ? row.compareTo.id : row.id) +
             '</p>',
         );
-        parts.push('</div>' + renderStatusBadge(row.status) + '</div>');
+        parts.push('</div>' + renderStatusBadge(row.status, row.status) + '</div>');
         parts.push('</section>');
 
         if (row.diff && state.data.compareToVersion) {
@@ -916,28 +1282,19 @@ export function renderMobSoundExplorerPage(): string {
           );
         }
 
-        if (row.compareTo && state.data.compareToVersion) {
-          parts.push('<section class="section">');
-          parts.push('<h3>' + escapeHtml(state.data.compareToVersion) + '</h3>');
-          parts.push(renderMobMeta(row.compareTo));
-          parts.push(
-            '<details class="details-group"><summary>Open compared-version sounds</summary>' +
-              '<div class="details-content">' +
-              renderSoundEventGroups(row.compareTo.soundEvents) +
-              '</div></details>',
-          );
-          parts.push('</section>');
-        }
-
         return parts.join('');
       }
 
-      function renderWikiPanel(row) {
+      function renderWikiSecondaryPanel(row) {
         const parts = [];
 
         if (!row.wiki) {
           parts.push('<section class="section">');
-          parts.push('<div class="empty">No matched minecraft.wiki category is saved for this mob in ' + escapeHtml(state.data.version) + '.</div>');
+          parts.push(
+            '<div class="empty">No matched minecraft.wiki category is saved for this mob in ' +
+              escapeHtml(state.data.version) +
+              '.</div>',
+          );
           parts.push('</section>');
           return parts.join('');
         }
@@ -1009,6 +1366,36 @@ export function renderMobSoundExplorerPage(): string {
         parts.push('</section>');
 
         return parts.join('');
+      }
+
+      function renderVersionSecondaryPanel(row) {
+        if (!state.data.compareToVersion) {
+          return '<div class="empty">No comparison version is active for this request.</div>';
+        }
+
+        if (!row.compareTo) {
+          return (
+            '<div class="empty">This mob does not exist in ' +
+            escapeHtml(state.data.compareToVersion) +
+            '.</div>'
+          );
+        }
+
+        return (
+          '<section class="section">' +
+          '<div class="info-line"><div>' +
+          '<h3>' + escapeHtml(row.displayName) + '</h3>' +
+          '<p class="meta-kicker">' + escapeHtml(row.compareTo.id) + '</p>' +
+          '</div>' +
+          renderNeutralBadge(state.data.compareToVersion) +
+          '</div>' +
+          '</section>' +
+          '<section class="section">' +
+          '<h3>' + escapeHtml(state.data.compareToVersion) + '</h3>' +
+          renderMobMeta(row.compareTo) +
+          renderSoundEventGroups(row.compareTo.soundEvents) +
+          '</section>'
+        );
       }
 
       function renderMobMeta(mob) {
@@ -1088,7 +1475,8 @@ export function renderMobSoundExplorerPage(): string {
 
         const query = state.search.trim().toLowerCase();
         return state.data.rows.filter(function (row) {
-          if (state.status !== 'all' && row.status !== state.status) {
+          const rowStatus = explorerConfig.mode === 'wiki' ? getWikiStatus(row) : row.status;
+          if (state.status !== 'all' && rowStatus !== state.status) {
             return false;
           }
 
@@ -1096,18 +1484,27 @@ export function renderMobSoundExplorerPage(): string {
             return true;
           }
 
-          const values = [
-            row.displayName,
-            row.id,
-            row.current ? row.current.localId : '',
-            row.current ? row.current.soundId : '',
-            row.compareTo ? row.compareTo.localId : '',
-            row.wiki ? row.wiki.displayName : '',
-            row.wiki ? row.wiki.id : '',
-          ]
-            .join(' ')
-            .toLowerCase();
-          return values.includes(query);
+          const values =
+            explorerConfig.mode === 'wiki'
+              ? [
+                  row.displayName,
+                  row.id,
+                  row.current ? row.current.localId : '',
+                  row.current ? row.current.soundId : '',
+                  row.wiki ? row.wiki.displayName : '',
+                  row.wiki ? row.wiki.id : '',
+                  row.wiki ? row.wiki.title : '',
+                ]
+              : [
+                  row.displayName,
+                  row.id,
+                  row.current ? row.current.localId : '',
+                  row.current ? row.current.soundId : '',
+                  row.compareTo ? row.compareTo.localId : '',
+                  row.compareTo ? row.compareTo.soundId : '',
+                ];
+
+          return values.join(' ').toLowerCase().includes(query);
         });
       }
 
@@ -1137,12 +1534,28 @@ export function renderMobSoundExplorerPage(): string {
         }
       }
 
+      function getWikiStatus(row) {
+        if (!row.wiki) {
+          return 'local-only';
+        }
+
+        return row.wiki.coverage === 'partial' ? 'partial' : 'exact';
+      }
+
+      function getWikiStatusLabel(status) {
+        if (status === 'local-only') {
+          return 'no wiki match';
+        }
+
+        return status;
+      }
+
       function syncUrl() {
         const query = new URLSearchParams();
         if (state.version) {
           query.set('version', state.version);
         }
-        if (state.compareTo) {
+        if (explorerConfig.mode === 'versions' && state.compareTo) {
           query.set('compareTo', state.compareTo);
         }
         if (state.status && state.status !== 'all') {
@@ -1158,8 +1571,8 @@ export function renderMobSoundExplorerPage(): string {
         window.history.replaceState(null, '', next);
       }
 
-      function renderStatusBadge(status) {
-        return '<span class="badge badge-' + escapeAttribute(status) + '">' + escapeHtml(status) + '</span>';
+      function renderStatusBadge(status, label) {
+        return '<span class="badge badge-' + escapeAttribute(status) + '">' + escapeHtml(label || status) + '</span>';
       }
 
       function renderNeutralBadge(label) {
@@ -1202,8 +1615,5 @@ export function renderMobSoundExplorerPage(): string {
       }
 
       loadData();
-    </script>
-  </body>
-</html>
-`;
+    </script>`;
 }

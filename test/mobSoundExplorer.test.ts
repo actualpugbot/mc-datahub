@@ -63,22 +63,42 @@ describe("mob sound explorer", () => {
     expect(ghast?.compareTo?.displayName).toBe("Ghast");
   });
 
-  test("serves the explorer page and its JSON payload", async () => {
+  test("serves the split explorer pages and their JSON payloads", async () => {
     const setup = await createFixtureProject();
     const server = buildApiServer(setup.config, setup.store);
 
-    const pageResponse = await issueRequest(server, "/mob-sounds/explorer");
-    expect(pageResponse.statusCode).toBe(200);
-    expect(pageResponse.headers["content-type"]).toContain("text/html");
-    expect(pageResponse.body).toContain("Mob Sound Explorer");
+    const landingResponse = await issueRequest(server, "/mob-sounds/explorer");
+    expect(landingResponse.statusCode).toBe(200);
+    expect(landingResponse.headers["content-type"]).toContain("text/html");
+    expect(landingResponse.body).toContain("Mob Sound Explorer");
+    expect(landingResponse.body).toContain("/mob-sounds/explorer/wiki");
+    expect(landingResponse.body).toContain("/mob-sounds/explorer/versions");
 
-    const dataResponse = await issueRequest(server, "/mob-sounds/explorer/data?version=2.0&compareTo=1.0");
-    expect(dataResponse.statusCode).toBe(200);
-    expect(dataResponse.headers["content-type"]).toContain("application/json");
-    const payload = JSON.parse(dataResponse.body) as Awaited<ReturnType<typeof buildMobSoundExplorerPayload>>;
-    expect(payload.version).toBe("2.0");
-    expect(payload.compareToVersion).toBe("1.0");
-    expect(payload.rows.map((row) => row.id)).toEqual(["allay", "breeze", "ghast"]);
+    const wikiPageResponse = await issueRequest(server, "/mob-sounds/explorer/wiki");
+    expect(wikiPageResponse.statusCode).toBe(200);
+    expect(wikiPageResponse.headers["content-type"]).toContain("text/html");
+    expect(wikiPageResponse.body).toContain("Mob Sound Wiki Explorer");
+
+    const versionPageResponse = await issueRequest(server, "/mob-sounds/explorer/versions");
+    expect(versionPageResponse.statusCode).toBe(200);
+    expect(versionPageResponse.headers["content-type"]).toContain("text/html");
+    expect(versionPageResponse.body).toContain("Mob Sound Version Explorer");
+
+    const wikiDataResponse = await issueRequest(server, "/mob-sounds/explorer/wiki/data?version=2.0");
+    expect(wikiDataResponse.statusCode).toBe(200);
+    expect(wikiDataResponse.headers["content-type"]).toContain("application/json");
+    const wikiPayload = JSON.parse(wikiDataResponse.body) as Awaited<ReturnType<typeof buildMobSoundExplorerPayload>>;
+    expect(wikiPayload.version).toBe("2.0");
+    expect(wikiPayload.compareToVersion).toBeUndefined();
+    expect(wikiPayload.rows.map((row) => row.id)).toEqual(["allay", "breeze"]);
+
+    const versionDataResponse = await issueRequest(server, "/mob-sounds/explorer/versions/data?version=2.0&compareTo=1.0");
+    expect(versionDataResponse.statusCode).toBe(200);
+    expect(versionDataResponse.headers["content-type"]).toContain("application/json");
+    const versionPayload = JSON.parse(versionDataResponse.body) as Awaited<ReturnType<typeof buildMobSoundExplorerPayload>>;
+    expect(versionPayload.version).toBe("2.0");
+    expect(versionPayload.compareToVersion).toBe("1.0");
+    expect(versionPayload.rows.map((row) => row.id)).toEqual(["allay", "breeze", "ghast"]);
   });
 });
 

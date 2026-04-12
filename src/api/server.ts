@@ -1,6 +1,10 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { buildMobSoundExplorerPayload, ApiRequestError } from "./mobSoundExplorer.js";
-import { renderMobSoundExplorerPage } from "./mobSoundExplorerPage.js";
+import {
+  renderMobSoundExplorerLandingPage,
+  renderMobSoundVersionExplorerPage,
+  renderMobSoundWikiExplorerPage,
+} from "./mobSoundExplorerPage.js";
 import { normalizeMinecraftId } from "../extraction/normalizers.js";
 import type { DatasetStore } from "../datasets/datasetStore.js";
 import type { AppConfig } from "../config.js";
@@ -23,11 +27,39 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
 
     try {
       if (requestUrl.pathname === "/mob-sounds/explorer") {
-        sendText(response, 200, renderMobSoundExplorerPage(), "text/html; charset=utf-8");
+        sendText(response, 200, renderMobSoundExplorerLandingPage(), "text/html; charset=utf-8");
+        return;
+      }
+
+      if (requestUrl.pathname === "/mob-sounds/explorer/wiki") {
+        sendText(response, 200, renderMobSoundWikiExplorerPage(), "text/html; charset=utf-8");
+        return;
+      }
+
+      if (requestUrl.pathname === "/mob-sounds/explorer/versions") {
+        sendText(response, 200, renderMobSoundVersionExplorerPage(), "text/html; charset=utf-8");
         return;
       }
 
       if (requestUrl.pathname === "/mob-sounds/explorer/data") {
+        const payload = await buildMobSoundExplorerPayload(datasetStore, config.workspace, {
+          version: requestUrl.searchParams.get("version") ?? undefined,
+          compareToVersion: requestUrl.searchParams.get("compareTo") ?? undefined,
+        });
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (requestUrl.pathname === "/mob-sounds/explorer/wiki/data") {
+        const payload = await buildMobSoundExplorerPayload(datasetStore, config.workspace, {
+          version: requestUrl.searchParams.get("version") ?? undefined,
+          compareToVersion: "",
+        });
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (requestUrl.pathname === "/mob-sounds/explorer/versions/data") {
         const payload = await buildMobSoundExplorerPayload(datasetStore, config.workspace, {
           version: requestUrl.searchParams.get("version") ?? undefined,
           compareToVersion: requestUrl.searchParams.get("compareTo") ?? undefined,
@@ -55,6 +87,10 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore): A
             "GET /health",
             "GET /versions",
             "GET /mob-sounds/explorer",
+            "GET /mob-sounds/explorer/wiki",
+            "GET /mob-sounds/explorer/wiki/data?version=",
+            "GET /mob-sounds/explorer/versions",
+            "GET /mob-sounds/explorer/versions/data?version=&compareTo=",
             "GET /mob-sounds/explorer/data?version=&compareTo=",
             "GET /versions/:version/blocks?id=&q=",
             "GET /versions/:version/items?id=&q=",

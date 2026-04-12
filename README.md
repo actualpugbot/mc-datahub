@@ -60,7 +60,10 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 
 For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `mob-images`, `mob-sounds`, `recipes`, and `palettes`.
 
-For quick manual inspection, the API also serves a simple mob sound comparison page at `GET /mob-sounds/explorer`, which lets you compare extracted mob sounds against the saved minecraft.wiki snapshot and diff one processed version against another.
+For quick manual inspection, the API now serves a small mob sound explorer landing page at `GET /mob-sounds/explorer` with two focused views:
+
+- `GET /mob-sounds/explorer/wiki` compares one processed version against the saved minecraft.wiki snapshot.
+- `GET /mob-sounds/explorer/versions` compares one processed version against another processed version locally.
 
 ## CLI
 
