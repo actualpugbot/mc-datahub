@@ -1,13 +1,15 @@
 import type { ArchiveSource } from "../archive/archiveSource.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { ensureDir, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
+import { ensureDir, fileExists, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
 import { encodePng, type RgbColor } from "../extraction/png.js";
 import type {
   BlockPropertyDefinition,
   ItemStatDefinition,
+  MinecraftWikiMobSoundAlignment,
+  MinecraftWikiMobSoundSnapshot,
   MobImageDefinition,
   MobSoundDefinition,
   PaletteDefinition,
@@ -54,8 +56,12 @@ export class DatasetStore {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
         resourcePack: dataset.resourcePack,
+        minecraftWiki: dataset.mobSoundMinecraftWiki,
         mobs: dataset.mobSounds,
       }),
+      ...(dataset.mobSoundMinecraftWiki
+        ? [writeJsonFile(join(directory, "mob-sounds-minecraft-wiki.json"), dataset.mobSoundMinecraftWiki)]
+        : []),
     ]);
 
     this.logger.debug(`Saved dataset for ${dataset.version} to ${directory}.`);
@@ -70,6 +76,7 @@ export class DatasetStore {
         blockProperties?: BlockPropertyDefinition[];
         mobImages?: MobImageDefinition[];
         mobSounds?: MobSoundDefinition[];
+        mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
         resourcePack?: ResourcePackDefinition;
       }
     >(
@@ -87,6 +94,7 @@ export class DatasetStore {
       blockProperties: dataset.blockProperties ?? [],
       mobImages: dataset.mobImages ?? [],
       mobSounds: dataset.mobSounds ?? [],
+      mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
       resourcePack: dataset.resourcePack,
     };
   }
@@ -105,6 +113,34 @@ export class DatasetStore {
     const outputPath = join(this.paths.diffsDir, `${diff.fromVersion}__${diff.toVersion}.json`);
     await writeJsonFile(outputPath, diff);
     return outputPath;
+  }
+
+  async saveMobSoundMinecraftWikiSnapshot(
+    version: string,
+    snapshot: MinecraftWikiMobSoundSnapshot,
+  ): Promise<{ path: string; relativePath: string }> {
+    const relativePath = join("sources", "minecraft-wiki", `mob-sounds-${toTimestampPathSegment(snapshot.fetchedAt)}.json`);
+    const outputPath = join(datasetVersionDir(this.paths, version), relativePath);
+    await writeJsonFile(outputPath, snapshot);
+    return {
+      path: outputPath,
+      relativePath,
+    };
+  }
+
+  async hasMobSoundMinecraftWikiArtifacts(version: string): Promise<boolean> {
+    const directory = datasetVersionDir(this.paths, version);
+    if (!(await fileExists(join(directory, "mob-sounds-minecraft-wiki.json")))) {
+      return false;
+    }
+
+    const snapshotDirectory = join(directory, "sources", "minecraft-wiki");
+    if (!(await fileExists(snapshotDirectory))) {
+      return false;
+    }
+
+    const entries = await fs.readdir(snapshotDirectory, { withFileTypes: true });
+    return entries.some((entry) => entry.isFile() && /^mob-sounds-.*\.json$/i.test(entry.name));
   }
 
   private async exportTextureImages(directory: string, textures: TextureDefinition[], source: ArchiveSource): Promise<void> {
@@ -144,6 +180,10 @@ export class DatasetStore {
       }
     }
   }
+}
+
+function toTimestampPathSegment(value: string): string {
+  return value.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
 function createMobPlaceholderImage(localId: string): Buffer {

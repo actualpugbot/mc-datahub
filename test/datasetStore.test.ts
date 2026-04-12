@@ -75,6 +75,35 @@ describe("dataset store", () => {
         },
       ],
       mobSounds: [],
+      mobSoundMinecraftWiki: {
+        source: "minecraft.wiki",
+        fetchedAt: "2026-04-12T18:00:00.000Z",
+        categoryCount: 1,
+        fileCount: 1,
+        matchedCategoryCount: 1,
+        exactCategoryCount: 1,
+        partialCategoryCount: 0,
+        wikiOnlyCategoryCount: 0,
+        unmatchedWikiCategoryIds: [],
+        unmatchedLocalMobIds: [],
+        localOnlyMobs: [],
+        categories: [
+          {
+            id: "allay",
+            title: "Category:Allay sounds",
+            displayName: "Allay",
+            url: "https://minecraft.wiki/w/Category:Allay_sounds",
+            wikiFileCount: 1,
+            mappedMobIds: ["allay"],
+            mappedMobDisplayNames: ["Allay"],
+            matchType: "direct",
+            coverage: "exact",
+            matchedFileCount: 1,
+            unmatchedWikiFileTitles: [],
+            unmatchedLocalSoundPaths: [],
+          },
+        ],
+      },
     };
 
     await store.saveDataset(dataset, archive);
@@ -82,12 +111,56 @@ describe("dataset store", () => {
     const exportedImage = await fs.readFile(join(root, "datasets/25w14a/images/block/oak_planks.png"));
     const exportedMobImage = await fs.readFile(join(root, "datasets/25w14a/mob-images/allay/allay.png"));
     const generatedMobImage = await fs.readFile(join(root, "datasets/25w14a/mob-images/generated/phantom.png"));
+    const exportedMobSoundWiki = JSON.parse(
+      await fs.readFile(join(root, "datasets/25w14a/mob-sounds-minecraft-wiki.json"), "utf8"),
+    ) as VersionDataset["mobSoundMinecraftWiki"];
     expect(exportedImage.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(true);
     expect(exportedMobImage.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]))).toBe(true);
     expect(decodePng(generatedMobImage)).toMatchObject({ width: 16, height: 16 });
+    expect(exportedMobSoundWiki?.categories[0]?.id).toBe("allay");
 
     const loaded = await store.loadDataset("25w14a");
     expect(loaded.textures[0]?.imagePath).toBe("images/block/oak_planks.png");
     expect(loaded.mobImages[0]?.imagePath).toBe("mob-images/allay/allay.png");
+    expect(loaded.mobSoundMinecraftWiki?.categories[0]?.id).toBe("allay");
+  });
+
+  test("saves minecraft.wiki mob sound snapshots with timestamped paths", async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), "mc-datahub-dataset-store-wiki-"));
+    const store = new DatasetStore(createWorkspacePaths(root), createConsoleLogger(false));
+
+    const saved = await store.saveMobSoundMinecraftWikiSnapshot("25w14a", {
+      source: "minecraft.wiki",
+      fetchedAt: "2026-04-12T18:00:00.000Z",
+      apiUrl: "https://minecraft.wiki/api.php",
+      rootCategoryTitle: "Category:Mob sounds",
+      categoryCount: 1,
+      fileCount: 1,
+      categories: [
+        {
+          id: "allay",
+          pageId: 1,
+          title: "Category:Allay sounds",
+          displayName: "Allay",
+          url: "https://minecraft.wiki/w/Category:Allay_sounds",
+          files: [
+            {
+              pageId: 2,
+              title: "File:Allay death1.ogg",
+              fileName: "Allay death1.ogg",
+              url: "https://minecraft.wiki/images/Allay_death1.ogg",
+              descriptionUrl: "https://minecraft.wiki/w/File:Allay_death1.ogg",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(saved.relativePath).toBe("sources/minecraft-wiki/mob-sounds-20260412T180000Z.json");
+    expect(await store.hasMobSoundMinecraftWikiArtifacts("25w14a")).toBe(false);
+    expect(JSON.parse(await fs.readFile(saved.path, "utf8"))).toMatchObject({
+      source: "minecraft.wiki",
+      categoryCount: 1,
+    });
   });
 });

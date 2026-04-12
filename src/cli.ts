@@ -4,9 +4,11 @@ import { join, resolve } from "node:path";
 import { Command } from "commander";
 import { ZipArchiveSource } from "./archive/zipArchiveSource.js";
 import { buildApiServer } from "./api/server.js";
-import { fileExists, writeJsonFile } from "./core/fs.js";
+import { fileExists, readJsonFile, writeJsonFile } from "./core/fs.js";
 import { versionDownloadsDir } from "./core/paths.js";
+import type { VersionMetadata } from "./domain/types.js";
 import { createDefaultContext } from "./index.js";
+import { buildMobAudioDumpPayload, dumpMobAudioFiles } from "./orchestrators/dumpMobAudio.js";
 import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
 
 function parseInteger(value: string): number {
@@ -185,6 +187,72 @@ async function main(): Promise<void> {
       }
 
       console.log(JSON.stringify(payload, null, 2));
+    });
+
+  dumpCommand
+    .command("mob-audio")
+    .argument("<version>", "Minecraft version id with a processed dataset or downloaded client/server jars")
+    .option("--output <path>", "Write mob audio files to a directory instead of the default dataset output")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const payload = await buildMobAudioDumpPayload(version, {
+        load: async (datasetVersion) => {
+          const dataset = await context.datasetStore.loadDataset(datasetVersion);
+          if (dataset.mobSounds.length === 0) {
+            const error = new Error(`Dataset ${datasetVersion} does not include mob sound metadata.`);
+            (error as NodeJS.ErrnoException).code = "ENOENT";
+            throw error;
+          }
+
+          return {
+            version: dataset.version,
+            mobSounds: dataset.mobSounds,
+          };
+        },
+        extract: async (datasetVersion) => {
+          const downloadsDir = versionDownloadsDir(context.config.workspace, datasetVersion);
+          const versionRoot = join(context.config.workspace.versionsDir, datasetVersion);
+          const sources = [];
+          const clientJarPath = join(downloadsDir, "client.jar");
+          const serverJarPath = join(downloadsDir, "server.jar");
+
+          if (await fileExists(clientJarPath)) {
+            sources.push(new ZipArchiveSource(clientJarPath));
+          }
+
+          if (await fileExists(serverJarPath)) {
+            sources.push(new ZipArchiveSource(serverJarPath));
+          }
+
+          if (sources.length === 0) {
+            throw new Error(
+              `No processed dataset or downloaded client.jar/server.jar was found for ${datasetVersion}. Looked in ${downloadsDir}.`,
+            );
+          }
+
+          const metadataPath = join(versionRoot, "metadata.json");
+          if (!(await fileExists(metadataPath))) {
+            throw new Error(
+              `No processed dataset or downloaded metadata.json was found for ${datasetVersion}. Looked in ${metadataPath}.`,
+            );
+          }
+
+          const metadata = await readJsonFile<VersionMetadata>(metadataPath);
+          const decompiledClientRoot = join(versionRoot, "decompiled", "client");
+          const mobSoundData = await context.mobSoundExtractor.extract(datasetVersion, metadata, sources, decompiledClientRoot);
+
+          return {
+            version: datasetVersion,
+            mobSounds: mobSoundData.mobSounds,
+          };
+        },
+      });
+
+      const outputDirectory = options.output
+        ? resolve(process.cwd(), options.output)
+        : join(context.config.workspace.datasetsDir, payload.version, "mob-audio");
+      const result = await dumpMobAudioFiles(payload, outputDirectory, context.http);
+      console.log(JSON.stringify(result, null, 2));
     });
 
   const apiCommand = program.command("api").description("Serve extracted datasets over HTTP.");

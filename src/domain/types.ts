@@ -271,6 +271,75 @@ export interface MobSoundDefinition {
   soundEvents: MobSoundEventDefinition[];
 }
 
+export interface MinecraftWikiMobSoundFile {
+  pageId: number;
+  title: string;
+  fileName: string;
+  url: string;
+  descriptionUrl: string;
+  mime?: string;
+  size?: number;
+  durationSeconds?: number;
+  updatedAt?: string;
+}
+
+export interface MinecraftWikiMobSoundCategory {
+  id: string;
+  pageId: number;
+  title: string;
+  displayName: string;
+  url: string;
+  files: MinecraftWikiMobSoundFile[];
+}
+
+export interface MinecraftWikiMobSoundSnapshot {
+  source: "minecraft.wiki";
+  fetchedAt: string;
+  apiUrl: string;
+  rootCategoryTitle: string;
+  categoryCount: number;
+  fileCount: number;
+  categories: MinecraftWikiMobSoundCategory[];
+}
+
+export interface MinecraftWikiMobSoundLocalOnlyMob {
+  id: string;
+  displayName: string;
+  soundEventCount: number;
+  soundVariantCount: number;
+}
+
+export interface MinecraftWikiMobSoundCategoryAlignment {
+  id: string;
+  title: string;
+  displayName: string;
+  url: string;
+  wikiFileCount: number;
+  mappedMobIds: string[];
+  mappedMobDisplayNames: string[];
+  matchType: "direct" | "grouped" | "wiki-only";
+  coverage: "exact" | "partial" | "wiki-only";
+  matchedFileCount: number;
+  unmatchedWikiFileTitles: string[];
+  unmatchedLocalSoundPaths: string[];
+}
+
+export interface MinecraftWikiMobSoundAlignment {
+  source: "minecraft.wiki";
+  fetchedAt: string;
+  snapshotRelativePath?: string;
+  categoryCount: number;
+  fileCount: number;
+  matchedCategoryCount: number;
+  exactCategoryCount: number;
+  partialCategoryCount: number;
+  wikiOnlyCategoryCount: number;
+  unmatchedWikiCategoryIds: string[];
+  unmatchedLocalMobIds: string[];
+  localOnlyMobs: MinecraftWikiMobSoundLocalOnlyMob[];
+  categories: MinecraftWikiMobSoundCategoryAlignment[];
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -289,6 +358,7 @@ export interface VersionDataset {
   blockProperties: BlockPropertyDefinition[];
   mobImages: MobImageDefinition[];
   mobSounds: MobSoundDefinition[];
+  mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
   resourcePack?: ResourcePackDefinition;
 }
 

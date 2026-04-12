@@ -91,6 +91,11 @@ const FALLBACK_NON_MOB_IDS = new Set([
   "wind_charge",
   "wither_skull",
 ]);
+const SHARED_SOUND_EVENT_FALLBACKS = new Map<string, string[]>([
+  ["entity.cod.ambient", ["entity.fish.swim"]],
+  ["entity.salmon.ambient", ["entity.fish.swim"]],
+  ["entity.tropical_fish.ambient", ["entity.fish.swim"]],
+]);
 
 interface AssetIndexObject {
   hash: string;
@@ -422,11 +427,12 @@ export class MobSoundExtractor {
   ): MobSoundEventDefinition {
     const rawEvent = soundManifest[eventId] ?? {};
     const variants = this.resolveSoundVariants(eventId, soundManifest, assetIndex, new Set<string>());
+    const subtitleKey = rawEvent.subtitle ?? this.resolveFallbackSubtitleKey(eventId, soundManifest, new Set<string>());
 
     return {
       id: eventId,
-      subtitleKey: rawEvent.subtitle,
-      subtitle: rawEvent.subtitle ? languageMap[rawEvent.subtitle] : undefined,
+      subtitleKey,
+      subtitle: subtitleKey ? languageMap[subtitleKey] : undefined,
       variants,
     };
   }
@@ -444,7 +450,7 @@ export class MobSoundExtractor {
     visitedEvents.add(eventId);
     const rawEvent = soundManifest[eventId];
     if (!rawEvent?.sounds?.length) {
-      return [];
+      return this.resolveFallbackSoundVariants(eventId, soundManifest, assetIndex, visitedEvents);
     }
 
     const variants: MobSoundVariantDefinition[] = [];
@@ -478,6 +484,50 @@ export class MobSoundExtractor {
       if (variant) {
         variants.push(variant);
       }
+    }
+
+    if (variants.length === 0) {
+      variants.push(...this.resolveFallbackSoundVariants(eventId, soundManifest, assetIndex, visitedEvents));
+    }
+
+    return variants;
+  }
+
+  private resolveFallbackSubtitleKey(
+    eventId: string,
+    soundManifest: SoundManifest,
+    visitedEvents: Set<string>,
+  ): string | undefined {
+    if (visitedEvents.has(eventId)) {
+      return undefined;
+    }
+
+    visitedEvents.add(eventId);
+    const subtitleKey = soundManifest[eventId]?.subtitle;
+    if (subtitleKey) {
+      return subtitleKey;
+    }
+
+    for (const fallbackEventId of SHARED_SOUND_EVENT_FALLBACKS.get(eventId) ?? []) {
+      const fallbackSubtitleKey = this.resolveFallbackSubtitleKey(fallbackEventId, soundManifest, new Set(visitedEvents));
+      if (fallbackSubtitleKey) {
+        return fallbackSubtitleKey;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveFallbackSoundVariants(
+    eventId: string,
+    soundManifest: SoundManifest,
+    assetIndex: AssetIndexResponse,
+    visitedEvents: Set<string>,
+  ): MobSoundVariantDefinition[] {
+    const variants: MobSoundVariantDefinition[] = [];
+
+    for (const fallbackEventId of SHARED_SOUND_EVENT_FALLBACKS.get(eventId) ?? []) {
+      variants.push(...this.resolveSoundVariants(fallbackEventId, soundManifest, assetIndex, new Set(visitedEvents)));
     }
 
     return variants;

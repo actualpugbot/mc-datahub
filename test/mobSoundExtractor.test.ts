@@ -217,6 +217,119 @@ public class EntityType<T extends Entity> {
       soundVariantCount: 0,
     });
   });
+
+  test("falls back to shared fish swim sounds when fish ambient events are empty", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mc-datahub-mob-sound-fish-"));
+    tempDirs.add(root);
+
+    const decompiledClientRoot = join(root, "decompiled-client");
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/world/entity/EntityType.java",
+      `package net.minecraft.world.entity;
+
+public class EntityType<T extends Entity> {
+   public static final EntityType<Cod> COD = register(
+      "cod",
+      EntityType.Builder.of(Cod::new, MobCategory.WATER_AMBIENT).sized(0.5F, 0.3F)
+   );
+}`,
+    );
+
+    const assetIndexUrl = "https://example.invalid/assets/fish.json";
+    const soundsHash = "1100000000000000000000000000000000000000";
+    const langHash = "2200000000000000000000000000000000000000";
+    const swimHashes = [
+      "3300000000000000000000000000000000000000",
+      "4400000000000000000000000000000000000000",
+      "5500000000000000000000000000000000000000",
+    ];
+
+    const http = createHttpClient({
+      [assetIndexUrl]: {
+        objects: {
+          "minecraft/lang/en_us.json": {
+            hash: langHash,
+            size: 100,
+          },
+          "minecraft/sounds.json": {
+            hash: soundsHash,
+            size: 200,
+          },
+          "minecraft/sounds/entity/fish/swim1.ogg": {
+            hash: swimHashes[0],
+            size: 11,
+          },
+          "minecraft/sounds/entity/fish/swim2.ogg": {
+            hash: swimHashes[1],
+            size: 12,
+          },
+          "minecraft/sounds/entity/fish/swim3.ogg": {
+            hash: swimHashes[2],
+            size: 13,
+          },
+        },
+      },
+      [toAssetUrl(soundsHash)]: {
+        "entity.cod.ambient": {
+          sounds: [],
+        },
+        "entity.cod.death": {
+          sounds: [],
+        },
+        "entity.cod.flop": {
+          sounds: [],
+        },
+        "entity.cod.hurt": {
+          sounds: [],
+        },
+        "entity.fish.swim": {
+          subtitle: "subtitles.entity.fish.swim",
+          sounds: ["entity/fish/swim1", "entity/fish/swim2", "entity/fish/swim3"],
+        },
+      },
+      [toAssetUrl(langHash)]: {
+        "entity.minecraft.cod": "Cod",
+        "subtitles.entity.fish.swim": "Splashes",
+      },
+    });
+
+    const extractor = new MobSoundExtractor(http, new FileCache(join(root, "cache")), createConsoleLogger(false));
+    const result = await extractor.extract(
+      "26.1.1",
+      {
+        id: "26.1.1",
+        type: "release",
+        releaseTime: "2026-04-01T00:00:00.000Z",
+        time: "2026-04-01T00:00:00.000Z",
+        downloads: {},
+        assetIndex: {
+          url: assetIndexUrl,
+        },
+      },
+      [new InMemoryArchiveSource({})],
+      decompiledClientRoot,
+    );
+
+    expect(result.mobSounds).toHaveLength(1);
+    expect(result.mobSounds[0]?.localId).toBe("cod");
+    expect(result.mobSounds[0]?.soundEvents[0]).toMatchObject({
+      id: "entity.cod.ambient",
+      subtitleKey: "subtitles.entity.fish.swim",
+      subtitle: "Splashes",
+      variants: [
+        expect.objectContaining({
+          soundPath: "entity/fish/swim1",
+        }),
+        expect.objectContaining({
+          soundPath: "entity/fish/swim2",
+        }),
+        expect.objectContaining({
+          soundPath: "entity/fish/swim3",
+        }),
+      ],
+    });
+  });
 });
 
 function createHttpClient(responses: Record<string, unknown>): HttpClient {

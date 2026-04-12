@@ -7,6 +7,7 @@ export interface AppConfig {
   workspace: WorkspacePaths;
   urls: {
     minecraftArticles: string;
+    minecraftWikiApi: string;
     versionManifest: string;
     yarnManifestBase: string;
     yarnMavenBase: string;
@@ -33,6 +34,7 @@ export function loadConfig(projectRoot = process.cwd()): AppConfig {
     workspace: createWorkspacePaths(workspaceRoot),
     urls: {
       minecraftArticles: process.env.MCDATAHUB_ARTICLES_URL ?? "https://www.minecraft.net/en-us/articles",
+      minecraftWikiApi: process.env.MCDATAHUB_MINECRAFT_WIKI_API_URL ?? "https://minecraft.wiki/api.php",
       versionManifest:
         process.env.MCDATAHUB_VERSION_MANIFEST_URL ?? "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
       yarnManifestBase: process.env.MCDATAHUB_YARN_MANIFEST_BASE_URL ?? "https://meta.fabricmc.net/v2/versions/yarn",

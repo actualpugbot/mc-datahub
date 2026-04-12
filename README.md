@@ -78,10 +78,13 @@ npm run cli -- process version latest-snapshot
 npm run cli -- toolchain doctor
 npm run cli -- diff versions 1.21.4 1.21.5
 npm run cli -- dump recipes 1.21.5 --output ./recipes.json
+npm run cli -- dump mob-audio 1.21.5
 npm run cli -- api serve --port 4000
 ```
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
+
+`dump mob-audio` prefers an already processed dataset and falls back to extracting mob sound metadata from downloaded `client.jar` and `server.jar` files plus `workspace/versions/<version>/metadata.json`, then downloads the referenced `.ogg` assets into `workspace/datasets/<version>/mob-audio/` by default.
 
 `fetch latest` now resolves the latest release and latest snapshot directly from Mojang's manifest, so `--kind any` processes both by default.
 

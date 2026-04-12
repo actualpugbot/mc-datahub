@@ -1,5 +1,5 @@
-import { stableJsonHash } from "../core/hash.js";
 import { join } from "node:path";
+import { stableJsonHash } from "../core/hash.js";
 import type { AppConfig } from "../config.js";
 import type { DecompilePipeline } from "../decompile/decompilePipeline.js";
 import type { DatasetStore } from "../datasets/datasetStore.js";
@@ -12,8 +12,13 @@ import type { MappingProvider } from "../domain/types.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
+import {
+  MinecraftWikiMobSoundSource,
+  buildMinecraftWikiMobSoundAlignment,
+} from "../extraction/minecraftWikiMobSoundSource.js";
 import type { MobImageExtractor } from "../extraction/mobImageExtractor.js";
 import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
+import type { MobSoundDefinition } from "../domain/types.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 
 export interface ProcessVersionOptions {
@@ -31,6 +36,7 @@ export class ProcessVersionWorkflow {
     private readonly extractor: MinecraftDataExtractor,
     private readonly mobImageExtractor: MobImageExtractor,
     private readonly mobSoundExtractor: MobSoundExtractor,
+    private readonly mobSoundMinecraftWiki: MinecraftWikiMobSoundSource,
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
@@ -48,6 +54,11 @@ export class ProcessVersionWorkflow {
 
     const previousFingerprint = await this.stateStore.getProcessedVersionFingerprint(manifestEntry.id);
     if (!options.force && previousFingerprint === fingerprint) {
+      const refreshedDataset = await this.refreshMobSoundMinecraftWikiArtifacts(manifestEntry.id, fingerprint);
+      if (refreshedDataset) {
+        return refreshedDataset;
+      }
+
       this.logger.info(`Skipping ${manifestEntry.id}; dataset fingerprint is unchanged.`);
       return {
         version: manifestEntry.id,
@@ -90,6 +101,10 @@ export class ProcessVersionWorkflow {
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.resourcePack = mobSoundData.resourcePack;
+    const mobSoundMinecraftWiki = await this.buildMobSoundMinecraftWikiArtifacts(manifestEntry.id, dataset.mobSounds);
+    if (mobSoundMinecraftWiki) {
+      dataset.mobSoundMinecraftWiki = mobSoundMinecraftWiki.alignment;
+    }
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);
 
@@ -98,7 +113,67 @@ export class ProcessVersionWorkflow {
       skipped: false,
       datasetPath,
       decompileReport,
+      mobSoundMinecraftWikiSnapshotPath: mobSoundMinecraftWiki?.snapshotPath,
       workspaceRoot: this.config.workspace.root,
     };
+  }
+
+  private async refreshMobSoundMinecraftWikiArtifacts(version: string, fingerprint: string) {
+    if (await this.datasetStore.hasMobSoundMinecraftWikiArtifacts(version)) {
+      return undefined;
+    }
+
+    let dataset;
+    try {
+      dataset = await this.datasetStore.loadDataset(version);
+    } catch {
+      return undefined;
+    }
+
+    if (dataset.mobSounds.length === 0) {
+      return undefined;
+    }
+
+    const mobSoundMinecraftWiki = await this.buildMobSoundMinecraftWikiArtifacts(version, dataset.mobSounds);
+    if (!mobSoundMinecraftWiki) {
+      return undefined;
+    }
+
+    this.logger.info(`Refreshing minecraft.wiki mob sound references for ${version}.`);
+    dataset.mobSoundMinecraftWiki = mobSoundMinecraftWiki.alignment;
+    const datasetPath = await this.datasetStore.saveDataset(dataset);
+    await this.stateStore.markVersionProcessed(version, fingerprint, datasetPath, join(this.config.workspace.versionsDir, version, "metadata.json"));
+
+    return {
+      version,
+      skipped: false,
+      datasetPath,
+      mobSoundMinecraftWikiSnapshotPath: mobSoundMinecraftWiki.snapshotPath,
+      refreshedMobSoundMinecraftWiki: true,
+      workspaceRoot: this.config.workspace.root,
+    };
+  }
+
+  private async buildMobSoundMinecraftWikiArtifacts(version: string, mobSounds: MobSoundDefinition[]) {
+    if (mobSounds.length === 0) {
+      return undefined;
+    }
+
+    try {
+      const snapshot = await this.mobSoundMinecraftWiki.fetchSnapshot();
+      const savedSnapshot = await this.datasetStore.saveMobSoundMinecraftWikiSnapshot(version, snapshot);
+      const alignment = buildMinecraftWikiMobSoundAlignment(mobSounds, snapshot);
+      alignment.snapshotRelativePath = savedSnapshot.relativePath;
+
+      return {
+        alignment,
+        snapshotPath: savedSnapshot.path,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Unable to fetch minecraft.wiki mob sound reference data for ${version}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
   }
 }
