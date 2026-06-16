@@ -11,10 +11,7 @@ export interface RecipeDumpLoader {
   extractDataset(version: string): Promise<VersionDataset>;
 }
 
-export async function buildRecipeDumpPayload(
-  version: string,
-  loader: RecipeDumpLoader,
-): Promise<RecipeDumpPayload> {
+export async function buildRecipeDumpPayload(version: string, loader: RecipeDumpLoader): Promise<RecipeDumpPayload> {
   try {
     const dataset = await loader.loadDataset(version);
     return {

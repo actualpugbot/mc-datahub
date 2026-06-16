@@ -194,7 +194,12 @@ const NAMED_CURATED_PRESETS: NamedPresetSpec[] = [
     name: "Mangrove Mire",
     description: "Swamp greens and damp clay browns with emerald highlights.",
     tags: ["biome", "foliage", "dry_foliage", "emerald", "swamp"],
-    sources: [extractedColormapId("foliage"), extractedColormapId("dry_foliage"), extractedTrimId("emerald"), extractedTrimId("iron")],
+    sources: [
+      extractedColormapId("foliage"),
+      extractedColormapId("dry_foliage"),
+      extractedTrimId("emerald"),
+      extractedTrimId("iron"),
+    ],
     colors: (paletteMap) =>
       composeColors(
         getColor(paletteMap, extractedColormapId("dry_foliage"), 1),
@@ -391,8 +396,7 @@ export async function buildPalettes(paths: string[], source: ArchiveSource): Pro
 async function buildExtractedPalettes(paths: string[], source: ArchiveSource): Promise<PaletteDefinition[]> {
   const extractedPalettes: PaletteDefinition[] = [];
   const relevantPaths = paths.filter(
-    (path) =>
-      (path.startsWith(TRIM_TEXTURE_PREFIX) || path.startsWith(COLORMAP_TEXTURE_PREFIX)) && path.endsWith(".png"),
+    (path) => (path.startsWith(TRIM_TEXTURE_PREFIX) || path.startsWith(COLORMAP_TEXTURE_PREFIX)) && path.endsWith(".png"),
   );
 
   for (const path of relevantPaths.sort()) {
@@ -438,11 +442,9 @@ async function buildExtractedPalettes(paths: string[], source: ArchiveSource): P
 function buildCuratedPalettes(extractedPalettes: PaletteDefinition[]): PaletteDefinition[] {
   const paletteMap: PaletteMap = new Map(extractedPalettes.map((palette) => [palette.id, palette]));
 
-  return [
-    ...buildMaterialPresets(paletteMap),
-    ...buildFusionPresets(paletteMap),
-    ...buildNamedCuratedPresets(paletteMap),
-  ].sort((left, right) => left.id.localeCompare(right.id));
+  return [...buildMaterialPresets(paletteMap), ...buildFusionPresets(paletteMap), ...buildNamedCuratedPresets(paletteMap)].sort(
+    (left, right) => left.id.localeCompare(right.id),
+  );
 }
 
 function buildMaterialPresets(paletteMap: PaletteMap): PaletteDefinition[] {
@@ -620,13 +622,14 @@ function extractedColormapId(slug: string): string {
 }
 
 function findNeutralPaletteId(material: MaterialSeed, paletteMap: PaletteMap): string | undefined {
-  const preferredNeutralIds = material.slug === "iron"
-    ? [extractedTrimId("quartz"), extractedTrimId("trim_palette")]
-    : material.slug === "quartz"
-      ? [extractedTrimId("iron"), extractedTrimId("trim_palette")]
-      : material.warm
-        ? [extractedTrimId("quartz"), extractedTrimId("trim_palette"), extractedTrimId("iron")]
-        : [extractedTrimId("iron"), extractedTrimId("trim_palette"), extractedTrimId("quartz")];
+  const preferredNeutralIds =
+    material.slug === "iron"
+      ? [extractedTrimId("quartz"), extractedTrimId("trim_palette")]
+      : material.slug === "quartz"
+        ? [extractedTrimId("iron"), extractedTrimId("trim_palette")]
+        : material.warm
+          ? [extractedTrimId("quartz"), extractedTrimId("trim_palette"), extractedTrimId("iron")]
+          : [extractedTrimId("iron"), extractedTrimId("trim_palette"), extractedTrimId("quartz")];
 
   return preferredNeutralIds.find((candidateId) => paletteMap.has(candidateId) && candidateId !== extractedTrimId(material.slug));
 }
@@ -662,9 +665,7 @@ function samplePixel(
 }
 
 function rgbToHex([red, green, blue]: readonly [number, number, number]): string {
-  return `#${[red, green, blue]
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("")}`;
+  return `#${[red, green, blue].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function getColor(paletteMap: PaletteMap, paletteId: string, index: number): string | undefined {

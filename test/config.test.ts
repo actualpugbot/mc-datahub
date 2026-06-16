@@ -4,12 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../src/config.js";
 
-const ENV_KEYS = [
-  "MCDATAHUB_WORKSPACE_ROOT",
-  "MCDATAHUB_VINEFLOWER_CMD",
-  "MCDATAHUB_VINEFLOWER_JAR",
-  "PATH",
-] as const;
+const ENV_KEYS = ["MCDATAHUB_WORKSPACE_ROOT", "MCDATAHUB_VINEFLOWER_CMD", "MCDATAHUB_VINEFLOWER_JAR", "PATH"] as const;
 
 const ORIGINAL_ENV = new Map<string, string | undefined>(ENV_KEYS.map((key) => [key, process.env[key]]));
 const tempDirs = new Set<string>();

@@ -12,10 +12,7 @@ import type { MappingProvider } from "../domain/types.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
-import {
-  MinecraftWikiMobSoundSource,
-  buildMinecraftWikiMobSoundAlignment,
-} from "../extraction/minecraftWikiMobSoundSource.js";
+import { MinecraftWikiMobSoundSource, buildMinecraftWikiMobSoundAlignment } from "../extraction/minecraftWikiMobSoundSource.js";
 import type { MobImageExtractor } from "../extraction/mobImageExtractor.js";
 import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { MobSoundDefinition } from "../domain/types.js";
@@ -142,7 +139,12 @@ export class ProcessVersionWorkflow {
     this.logger.info(`Refreshing minecraft.wiki mob sound references for ${version}.`);
     dataset.mobSoundMinecraftWiki = mobSoundMinecraftWiki.alignment;
     const datasetPath = await this.datasetStore.saveDataset(dataset);
-    await this.stateStore.markVersionProcessed(version, fingerprint, datasetPath, join(this.config.workspace.versionsDir, version, "metadata.json"));
+    await this.stateStore.markVersionProcessed(
+      version,
+      fingerprint,
+      datasetPath,
+      join(this.config.workspace.versionsDir, version, "metadata.json"),
+    );
 
     return {
       version,

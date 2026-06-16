@@ -11,7 +11,10 @@ export class ZipArchiveSource implements ArchiveSource {
 
   async listPaths(): Promise<string[]> {
     const directory = await this.directoryPromise;
-    return directory.files.filter((entry) => entry.type === "File").map((entry) => entry.path).sort();
+    return directory.files
+      .filter((entry) => entry.type === "File")
+      .map((entry) => entry.path)
+      .sort();
   }
 
   async has(path: string): Promise<boolean> {

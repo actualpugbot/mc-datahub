@@ -168,7 +168,14 @@ export class MobSoundExtractor {
 
     const mobSounds = registrations
       .map((registration) =>
-        this.buildMobSoundDefinition(registration, eventsByNormalizedSoundId, soundIdsByNormalizedId, soundManifest, languageMap, assetIndex),
+        this.buildMobSoundDefinition(
+          registration,
+          eventsByNormalizedSoundId,
+          soundIdsByNormalizedId,
+          soundManifest,
+          languageMap,
+          assetIndex,
+        ),
       )
       .sort((left, right) => left.displayName.localeCompare(right.displayName));
 
@@ -279,17 +286,9 @@ export class MobSoundExtractor {
 
     const record = value as Record<string, unknown>;
     const min =
-      typeof record.min_inclusive === "number"
-        ? record.min_inclusive
-        : typeof record.min === "number"
-          ? record.min
-          : undefined;
+      typeof record.min_inclusive === "number" ? record.min_inclusive : typeof record.min === "number" ? record.min : undefined;
     const max =
-      typeof record.max_inclusive === "number"
-        ? record.max_inclusive
-        : typeof record.max === "number"
-          ? record.max
-          : undefined;
+      typeof record.max_inclusive === "number" ? record.max_inclusive : typeof record.max === "number" ? record.max : undefined;
     if (min === undefined && max === undefined) {
       return undefined;
     }
@@ -632,7 +631,9 @@ export class MobSoundExtractor {
       return undefined;
     }
 
-    return this.cache.remember(`asset-json:${asset.hash}`, IMMUTABLE_CACHE_MS, () => this.http.getJson<T>(toAssetDownloadUrl(asset.hash)));
+    return this.cache.remember(`asset-json:${asset.hash}`, IMMUTABLE_CACHE_MS, () =>
+      this.http.getJson<T>(toAssetDownloadUrl(asset.hash)),
+    );
   }
 
   private async loadTextAsset(assetIndex: AssetIndexResponse, assetPath: string): Promise<string | undefined> {
@@ -641,7 +642,9 @@ export class MobSoundExtractor {
       return undefined;
     }
 
-    return this.cache.remember(`asset-text:${asset.hash}`, IMMUTABLE_CACHE_MS, () => this.http.getText(toAssetDownloadUrl(asset.hash)));
+    return this.cache.remember(`asset-text:${asset.hash}`, IMMUTABLE_CACHE_MS, () =>
+      this.http.getText(toAssetDownloadUrl(asset.hash)),
+    );
   }
 
   private async tryReadJson(source: ArchiveSource, path: string): Promise<JsonValue | undefined> {
