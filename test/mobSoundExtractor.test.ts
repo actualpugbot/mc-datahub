@@ -330,6 +330,96 @@ public class EntityType<T extends Entity> {
       ],
     });
   });
+
+  test("parses 26.2 EntityTypes registrations, EntityTypeIds, and in-JAR language strings", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mc-datahub-mob-sound-262-"));
+    tempDirs.add(root);
+
+    const decompiledClientRoot = join(root, "decompiled-client");
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/world/entity/EntityTypeIds.java",
+      `package net.minecraft.world.entity;
+
+public class EntityTypeIds {
+   public static final ResourceKey<EntityType<?>> ALLAY = create("allay");
+   public static final ResourceKey<EntityType<?>> ZOMBIE = create("zombie");
+}`,
+    );
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/world/entity/EntityTypes.java",
+      `package net.minecraft.world.entity;
+
+public class EntityTypes {
+   public static final EntityType<Allay> ALLAY = register(
+      EntityTypeIds.ALLAY,
+      EntityType.Builder.of(Allay::new, MobCategory.CREATURE).sized(0.35F, 0.6F).clientTrackingRange(8)
+   );
+   public static final EntityType<Zombie> ZOMBIE = register(
+      EntityTypeIds.ZOMBIE, EntityType.Builder.of(Zombie::new, MobCategory.MONSTER).sized(0.6F, 1.95F)
+   );
+}`,
+    );
+
+    const assetIndexUrl = "https://example.invalid/assets/32.json";
+    const soundsHash = "a100000000000000000000000000000000000000";
+    const ambientHash = "a200000000000000000000000000000000000000";
+
+    const http = createHttpClient({
+      [assetIndexUrl]: {
+        objects: {
+          // 26.2 no longer ships en_us.json in the asset index.
+          "minecraft/sounds.json": { hash: soundsHash, size: 100 },
+          "minecraft/sounds/entity/allay/ambient1.ogg": { hash: ambientHash, size: 12 },
+        },
+      },
+      [toAssetUrl(soundsHash)]: {
+        "entity.allay.ambient": {
+          subtitle: "subtitles.entity.allay.ambient",
+          sounds: ["entity/allay/ambient1"],
+        },
+      },
+    });
+
+    const extractor = new MobSoundExtractor(http, new FileCache(join(root, "cache")), createConsoleLogger(false));
+    const result = await extractor.extract(
+      "26.2-rc-2",
+      {
+        id: "26.2-rc-2",
+        type: "snapshot",
+        releaseTime: "2026-06-12T00:00:00.000Z",
+        time: "2026-06-12T00:00:00.000Z",
+        downloads: {},
+        assetIndex: {
+          url: assetIndexUrl,
+        },
+      },
+      [
+        new InMemoryArchiveSource({
+          "assets/minecraft/lang/en_us.json": JSON.stringify({
+            "entity.minecraft.allay": "Allay",
+            "entity.minecraft.zombie": "Zombie",
+            "subtitles.entity.allay.ambient": "Allay chirps",
+          }),
+        }),
+      ],
+      decompiledClientRoot,
+    );
+
+    expect(result.mobSounds.map((entry) => entry.localId)).toEqual(["allay", "zombie"]);
+    expect(result.mobSounds.find((entry) => entry.localId === "allay")).toMatchObject({
+      id: "minecraft:allay",
+      displayName: "Allay",
+      mobCategory: "CREATURE",
+      soundEventCount: 1,
+    });
+    expect(result.mobSounds.find((entry) => entry.localId === "allay")?.soundEvents[0]).toMatchObject({
+      id: "entity.allay.ambient",
+      subtitle: "Allay chirps",
+    });
+    expect(result.mobSounds.find((entry) => entry.localId === "zombie")?.displayName).toBe("Zombie");
+  });
 });
 
 function createHttpClient(responses: Record<string, unknown>): HttpClient {

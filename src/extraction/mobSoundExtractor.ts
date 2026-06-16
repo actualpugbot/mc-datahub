@@ -16,7 +16,13 @@ import type {
 import { normalizeMinecraftId } from "./normalizers.js";
 
 const ASSET_DOWNLOAD_BASE_URL = "https://resources.download.minecraft.net";
-const ENTITY_TYPE_SOURCE_PATH = "net/minecraft/world/entity/EntityType.java";
+// Minecraft 26.2 relocated entity registrations from EntityType.java to EntityTypes.java; keep both for older versions.
+const ENTITY_TYPE_SOURCE_PATHS = [
+  "net/minecraft/world/entity/EntityTypes.java",
+  "net/minecraft/world/entity/EntityType.java",
+] as const;
+const ENTITY_TYPE_IDS_SOURCE_PATH = "net/minecraft/world/entity/EntityTypeIds.java";
+const ARCHIVE_LANGUAGE_PATH = "assets/minecraft/lang/en_us.json";
 const IMMUTABLE_CACHE_MS = 1000 * 60 * 60 * 24 * 365;
 
 const ALLOWED_MOB_CATEGORIES = new Set([
@@ -153,7 +159,7 @@ export class MobSoundExtractor {
     const assetIndex = await this.loadAssetIndex(metadata);
     const [soundManifest, languageMap, resourcePack] = await Promise.all([
       this.loadSoundManifest(assetIndex),
-      this.loadLanguageMap(assetIndex),
+      this.loadLanguageMap(assetIndex, archive),
       this.loadResourcePackDefinition(archive, assetIndex, decompiledClientRoot),
     ]);
     const eventsByNormalizedSoundId = this.groupEntityEventsByNormalizedId(soundManifest);
@@ -188,10 +194,16 @@ export class MobSoundExtractor {
     return (await this.loadJsonAsset<SoundManifest>(assetIndex, "minecraft/sounds.json")) ?? {};
   }
 
-  private async loadLanguageMap(assetIndex: AssetIndexResponse): Promise<LanguageMap> {
+  private async loadLanguageMap(assetIndex: AssetIndexResponse, archive: ArchiveSource): Promise<LanguageMap> {
     const jsonLanguageMap = await this.loadJsonAsset<LanguageMap>(assetIndex, "minecraft/lang/en_us.json");
     if (jsonLanguageMap) {
       return jsonLanguageMap;
+    }
+
+    // Minecraft 26.2+ ships en_us.json inside the client JAR instead of the asset index.
+    const archiveLanguageMap = await this.tryReadJson(archive, ARCHIVE_LANGUAGE_PATH);
+    if (archiveLanguageMap && !Array.isArray(archiveLanguageMap) && typeof archiveLanguageMap === "object") {
+      return archiveLanguageMap as LanguageMap;
     }
 
     const legacyLanguage = await this.loadTextAsset(assetIndex, "minecraft/lang/en_us.lang");
@@ -299,18 +311,32 @@ export class MobSoundExtractor {
   }
 
   private async parseEntityTypeRegistrations(decompiledClientRoot: string): Promise<MobRegistration[]> {
-    const sourcePath = join(decompiledClientRoot, ENTITY_TYPE_SOURCE_PATH);
-    if (!(await fileExists(sourcePath))) {
-      return [];
+    const idsByConstant = await this.loadEntityTypeIds(decompiledClientRoot);
+
+    for (const candidatePath of ENTITY_TYPE_SOURCE_PATHS) {
+      const sourcePath = join(decompiledClientRoot, candidatePath);
+      if (!(await fileExists(sourcePath))) {
+        continue;
+      }
+
+      const source = await fs.readFile(sourcePath, "utf8");
+      const registrations = this.parseRegistrationsFromSource(source, idsByConstant);
+      if (registrations.length > 0) {
+        return registrations;
+      }
     }
 
-    const source = await fs.readFile(sourcePath, "utf8");
+    return [];
+  }
+
+  private parseRegistrationsFromSource(source: string, idsByConstant: Map<string, string>): MobRegistration[] {
     const registrations: MobRegistration[] = [];
+    // The first register() argument is either a string literal ("allay") or, since 26.2, an EntityTypeIds constant.
     const registrationPattern =
-      /public static final EntityType<[^>]+>\s+[A-Z0-9_]+\s*=\s*register\(\s*"([^"]+)"\s*,([\s\S]*?)\n\s*\);\n/g;
+      /public static final EntityType<[^>]+>\s+[A-Z0-9_]+\s*=\s*register\(\s*([^,]+?)\s*,([\s\S]*?)\n\s*\);\n/g;
 
     for (const match of source.matchAll(registrationPattern)) {
-      const localId = match[1];
+      const localId = this.resolveRegistrationId(match[1] ?? "", idsByConstant);
       const registrationBody = match[2] ?? "";
       const mobCategoryMatch = registrationBody.match(/MobCategory\.([A-Z_]+)/);
       const mobCategory = mobCategoryMatch?.[1];
@@ -326,6 +352,42 @@ export class MobSoundExtractor {
     }
 
     return registrations.sort((left, right) => left.localId.localeCompare(right.localId));
+  }
+
+  private resolveRegistrationId(rawId: string, idsByConstant: Map<string, string>): string | undefined {
+    const trimmed = rawId.trim();
+    const stringLiteralMatch = trimmed.match(/^"([^"]+)"$/);
+    if (stringLiteralMatch) {
+      return stringLiteralMatch[1];
+    }
+
+    // 26.2+ references a constant (e.g. EntityTypeIds.ALLAY); resolve it via EntityTypeIds.create("allay").
+    const constantName = trimmed.split(".").pop();
+    if (!constantName || !/^[A-Z0-9_]+$/.test(constantName)) {
+      return undefined;
+    }
+
+    return idsByConstant.get(constantName) ?? constantName.toLowerCase();
+  }
+
+  private async loadEntityTypeIds(decompiledClientRoot: string): Promise<Map<string, string>> {
+    const sourcePath = join(decompiledClientRoot, ENTITY_TYPE_IDS_SOURCE_PATH);
+    if (!(await fileExists(sourcePath))) {
+      return new Map();
+    }
+
+    const source = await fs.readFile(sourcePath, "utf8");
+    const idsByConstant = new Map<string, string>();
+    const idPattern = /\b([A-Z0-9_]+)\s*=\s*create\(\s*"([^"]+)"\s*\)/g;
+    for (const match of source.matchAll(idPattern)) {
+      const constantName = match[1];
+      const id = match[2];
+      if (constantName && id) {
+        idsByConstant.set(constantName, id);
+      }
+    }
+
+    return idsByConstant;
   }
 
   private deriveFallbackRegistrations(languageMap: LanguageMap, soundManifest: SoundManifest): MobRegistration[] {

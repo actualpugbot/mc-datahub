@@ -145,6 +145,71 @@ public class ShulkerRenderer extends MobRenderer {
       origin: "generated",
     });
   });
+
+  test("resolves renderer-linked mob images from 26.2 EntityTypes registrations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mc-datahub-mob-image-262-"));
+    tempDirs.add(root);
+
+    const decompiledClientRoot = join(root, "decompiled-client");
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/client/renderer/entity/EntityRenderers.java",
+      `package net.minecraft.client.renderer.entity;
+
+import net.minecraft.world.entity.EntityTypes;
+
+public class EntityRenderers {
+   static {
+      register(EntityTypes.ALLAY, AllayRenderer::new);
+      register(EntityTypes.GIANT, context -> new GiantMobRenderer(context, 6.0F));
+   }
+}`,
+    );
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/client/renderer/entity/AllayRenderer.java",
+      `package net.minecraft.client.renderer.entity;
+
+import net.minecraft.resources.Identifier;
+
+public class AllayRenderer extends MobRenderer {
+   private static final Identifier ALLAY_LOCATION = Identifier.withDefaultNamespace("textures/entity/allay/allay.png");
+}`,
+    );
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/client/renderer/entity/GiantMobRenderer.java",
+      `package net.minecraft.client.renderer.entity;
+
+import net.minecraft.resources.Identifier;
+
+public class GiantMobRenderer extends MobRenderer {
+   private static final Identifier ZOMBIE_LOCATION = Identifier.withDefaultNamespace("textures/entity/zombie/zombie.png");
+}`,
+    );
+
+    const extractor = new MobImageExtractor(createConsoleLogger(false));
+    const result = await extractor.extract(
+      [createMob("allay", "Allay"), createMob("giant", "Giant")],
+      [
+        new InMemoryArchiveSource({
+          "assets/minecraft/textures/entity/allay/allay.png": Buffer.from([0x01]),
+          "assets/minecraft/textures/entity/zombie/zombie.png": Buffer.from([0x02]),
+        }),
+      ],
+      decompiledClientRoot,
+    );
+
+    const imagesByLocalId = new Map(result.map((entry) => [entry.localId, entry]));
+    expect(imagesByLocalId.get("allay")).toMatchObject({
+      imagePath: "mob-images/allay/allay.png",
+      origin: "renderer",
+    });
+    expect(imagesByLocalId.get("giant")).toMatchObject({
+      imagePath: "mob-images/zombie/zombie.png",
+      origin: "renderer",
+    });
+  });
 });
 
 function createMob(localId: string, displayName: string): MobSoundDefinition {

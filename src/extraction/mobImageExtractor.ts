@@ -9,8 +9,9 @@ const ENTITY_RENDERERS_SOURCE_PATH = "net/minecraft/client/renderer/entity/Entit
 const ENTITY_RENDERER_SOURCE_DIR = "net/minecraft/client/renderer/entity";
 const ENTITY_TEXTURE_PREFIX = "assets/minecraft/textures/entity/";
 const RENDERER_TEXTURE_PATTERN = /textures\/entity\/[a-z0-9_./-]+\.png/gi;
-const REGISTER_METHOD_REFERENCE_PATTERN = /register\(\s*EntityType\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
-const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityType\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
+// 26.2 renderer registrations reference EntityTypes.<ID>; older versions use EntityType.<ID>.
+const REGISTER_METHOD_REFERENCE_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
+const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
 const FALLBACK_EXCLUDED_PREFIXES = ["banner/", "bed/", "boat/", "chest/", "equipment/", "shield/", "signs/"] as const;
 const BASE_VARIANT_TOKENS = new Set(["default", "normal", "temperate"]);
 const OVERLAY_TOKENS = new Set([
