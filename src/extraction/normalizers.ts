@@ -123,7 +123,9 @@ export function normalizeRecipe(id: string, sourcePath: string, raw: JsonValue):
 
   const type = !Array.isArray(raw) && raw && typeof raw === "object" && typeof raw.type === "string" ? raw.type : "unknown";
   const result =
-    !Array.isArray(raw) && raw && typeof raw === "object" ? normalizeRecipeResult(raw.result as JsonValue | undefined) : undefined;
+    !Array.isArray(raw) && raw && typeof raw === "object"
+      ? normalizeRecipeResult(raw.result as JsonValue | undefined)
+      : undefined;
 
   return {
     id,
@@ -134,6 +136,92 @@ export function normalizeRecipe(id: string, sourcePath: string, raw: JsonValue):
     sourcePath,
     raw,
   };
+}
+
+export function ensureTagNamespace(value: string): string {
+  if (value.startsWith("#")) {
+    const inner = value.slice(1);
+    return `#${inner.includes(":") ? inner : `minecraft:${inner}`}`;
+  }
+
+  return value.includes(":") ? value : `minecraft:${value}`;
+}
+
+export function normalizeTagEntry(value: JsonValue): string | undefined {
+  if (typeof value === "string") {
+    return ensureTagNamespace(value);
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.id === "string") {
+    return ensureTagNamespace(value.id);
+  }
+
+  return undefined;
+}
+
+export function componentTranslationKey(value: JsonValue | undefined): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return typeof value.translate === "string" ? value.translate : undefined;
+}
+
+export function collectLootItemDrops(raw: JsonValue): string[] {
+  const drops = new Set<string>();
+
+  const visit = (value: JsonValue): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        visit(entry);
+      }
+      return;
+    }
+
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    const type = typeof value.type === "string" ? value.type : undefined;
+    if ((type === "minecraft:item" || type === "item") && typeof value.name === "string") {
+      drops.add(normalizeMinecraftId(value.name));
+    }
+
+    for (const entry of Object.values(value)) {
+      visit(entry);
+    }
+  };
+
+  visit(raw);
+  return Array.from(drops).sort();
+}
+
+export function collectLootFunctions(raw: JsonValue): string[] {
+  const functions = new Set<string>();
+
+  const visit = (value: JsonValue): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        visit(entry);
+      }
+      return;
+    }
+
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (typeof value.function === "string") {
+      functions.add(normalizeMinecraftId(value.function));
+    }
+
+    for (const entry of Object.values(value)) {
+      visit(entry);
+    }
+  };
+
+  visit(raw);
+  return Array.from(functions).sort();
 }
 
 export function modelKindFromPath(path: string): ModelDefinition["kind"] {

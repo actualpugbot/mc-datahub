@@ -89,6 +89,11 @@ function createDataset(version: string): VersionDataset {
     palettes: [],
     itemStats: [],
     blockProperties: [],
+    enchantments: [],
+    tags: [],
+    lootTables: [],
+    advancements: [],
+    translations: [],
     mobImages: [],
     mobSounds: [],
   };

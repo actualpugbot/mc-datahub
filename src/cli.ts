@@ -6,8 +6,27 @@ import { ZipArchiveSource } from "./archive/zipArchiveSource.js";
 import { buildApiServer } from "./api/server.js";
 import { fileExists, readJsonFile, writeJsonFile } from "./core/fs.js";
 import { versionDownloadsDir } from "./core/paths.js";
-import type { VersionMetadata } from "./domain/types.js";
+import type { VersionDataset, VersionMetadata } from "./domain/types.js";
 import { createDefaultContext } from "./index.js";
+
+const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> = {
+  blocks: (dataset) => dataset.blocks,
+  items: (dataset) => dataset.items,
+  "item-stats": (dataset) => dataset.itemStats,
+  "block-properties": (dataset) => dataset.blockProperties,
+  recipes: (dataset) => dataset.recipes,
+  models: (dataset) => dataset.models,
+  textures: (dataset) => dataset.textures,
+  enchantments: (dataset) => dataset.enchantments,
+  tags: (dataset) => dataset.tags,
+  "loot-tables": (dataset) => dataset.lootTables,
+  advancements: (dataset) => dataset.advancements,
+  translations: (dataset) => dataset.translations,
+  palettes: (dataset) => dataset.palettes,
+  "mob-images": (dataset) => dataset.mobImages,
+  "mob-sounds": (dataset) => dataset.mobSounds,
+  dataset: (dataset) => dataset,
+};
 import { buildMobAudioDumpPayload, dumpMobAudioFiles } from "./orchestrators/dumpMobAudio.js";
 import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
 
@@ -125,6 +144,11 @@ async function main(): Promise<void> {
               textures: summarizeCollection(diff.textures),
               models: summarizeCollection(diff.models),
               palettes: summarizeCollection(diff.palettes),
+              enchantments: summarizeCollection(diff.enchantments),
+              tags: summarizeCollection(diff.tags),
+              lootTables: summarizeCollection(diff.lootTables),
+              advancements: summarizeCollection(diff.advancements),
+              translations: summarizeCollection(diff.translations),
               mobImages: summarizeCollection(diff.mobImages),
               mobSounds: summarizeCollection(diff.mobSounds),
             },
@@ -135,7 +159,53 @@ async function main(): Promise<void> {
       );
     });
 
+  const versionsCommand = program.command("versions").description("Inspect locally processed datasets.");
+  versionsCommand
+    .command("list")
+    .description("List versions that have a processed dataset on disk.")
+    .action(async () => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const versions = await context.datasetStore.listVersions();
+      console.log(JSON.stringify({ count: versions.length, versions }, null, 2));
+    });
+
   const dumpCommand = program.command("dump").description("Dump extracted data as JSON.");
+  dumpCommand
+    .command("collection")
+    .argument("<collection>", `One of: ${Object.keys(COLLECTION_GETTERS).join(", ")}`)
+    .argument("<version>", "Minecraft version id with a processed dataset")
+    .option("--output <path>", "Write JSON to a file instead of stdout")
+    .action(async (collection, version, options) => {
+      const getter = COLLECTION_GETTERS[collection];
+      if (!getter) {
+        throw new Error(`Unknown collection "${collection}". Expected one of: ${Object.keys(COLLECTION_GETTERS).join(", ")}.`);
+      }
+
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const dataset = await context.datasetStore.loadDataset(version);
+      const payload = getter(dataset);
+
+      if (options.output) {
+        const outputPath = resolve(process.cwd(), options.output);
+        await writeJsonFile(outputPath, payload);
+        console.log(
+          JSON.stringify(
+            {
+              version,
+              collection,
+              count: Array.isArray(payload) ? payload.length : undefined,
+              outputPath,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      console.log(JSON.stringify(payload, null, 2));
+    });
+
   dumpCommand
     .command("recipes")
     .argument("<version>", "Minecraft version id with a processed dataset or downloaded client/server jars")
@@ -269,7 +339,7 @@ async function main(): Promise<void> {
         context.config.api.port = options.port;
       }
 
-      const server = buildApiServer(context.config, context.datasetStore);
+      const server = buildApiServer(context.config, context.datasetStore, context.diffEngine);
       await server.listen({
         host: context.config.api.host,
         port: context.config.api.port,

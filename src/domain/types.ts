@@ -340,6 +340,65 @@ export interface MinecraftWikiMobSoundAlignment {
   categories: MinecraftWikiMobSoundCategoryAlignment[];
 }
 
+export interface EnchantmentDefinition {
+  id: string;
+  descriptionKey?: string;
+  description?: string;
+  supportedItems?: string;
+  primaryItems?: string;
+  maxLevel?: number;
+  weight?: number;
+  anvilCost?: number;
+  slots: string[];
+  exclusiveSet?: string;
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+export interface TagDefinition {
+  id: string;
+  registry: string;
+  replace: boolean;
+  values: string[];
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+export interface LootTableDefinition {
+  id: string;
+  type?: string;
+  poolCount: number;
+  itemDrops: string[];
+  functions: string[];
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+export interface AdvancementRewardsDefinition {
+  recipes?: string[];
+  loot?: string[];
+  experience?: number;
+  function?: string;
+}
+
+export interface AdvancementDefinition {
+  id: string;
+  parent?: string;
+  titleKey?: string;
+  descriptionKey?: string;
+  iconItem?: string;
+  frame?: string;
+  criteria: string[];
+  rewards?: AdvancementRewardsDefinition;
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+export interface TranslationEntry {
+  key: string;
+  value: string;
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -356,6 +415,11 @@ export interface VersionDataset {
   palettes: PaletteDefinition[];
   itemStats: ItemStatDefinition[];
   blockProperties: BlockPropertyDefinition[];
+  enchantments: EnchantmentDefinition[];
+  tags: TagDefinition[];
+  lootTables: LootTableDefinition[];
+  advancements: AdvancementDefinition[];
+  translations: TranslationEntry[];
   mobImages: MobImageDefinition[];
   mobSounds: MobSoundDefinition[];
   mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
@@ -387,6 +451,11 @@ export interface VersionDiff {
   palettes: CollectionDiff<PaletteDefinition>;
   itemStats: CollectionDiff<ItemStatDefinition>;
   blockProperties: CollectionDiff<BlockPropertyDefinition>;
+  enchantments: CollectionDiff<EnchantmentDefinition>;
+  tags: CollectionDiff<TagDefinition>;
+  lootTables: CollectionDiff<LootTableDefinition>;
+  advancements: CollectionDiff<AdvancementDefinition>;
+  translations: CollectionDiff<TranslationEntry>;
   mobImages: CollectionDiff<MobImageDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
 }

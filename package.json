@@ -2,6 +2,7 @@
   "name": "mc-datahub",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "description": "Track Minecraft Java Edition versions and extract normalized datasets.",
   "engines": {
@@ -10,6 +11,21 @@
   "bin": {
     "mc-datahub": "./dist/cli.js"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/domain/types.d.ts",
+      "import": "./dist/domain/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
     "cli": "node dist/cli.js",
@@ -17,6 +33,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
+    "format:check": "prettier --check \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
     "dev:cli": "tsx src/cli.ts"
   },
   "dependencies": {
@@ -25,10 +44,15 @@
     "unzipper": "^0.12.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^24.0.0",
     "@types/unzipper": "^0.10.11",
+    "eslint": "^9.39.4",
+    "globals": "^15.15.0",
+    "prettier": "^3.8.4",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.61.1",
     "vitest": "^3.1.1"
   }
 }

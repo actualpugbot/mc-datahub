@@ -6,15 +6,20 @@ import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
 import { encodePng, type RgbColor } from "../extraction/png.js";
 import type {
+  AdvancementDefinition,
   BlockPropertyDefinition,
+  EnchantmentDefinition,
   ItemStatDefinition,
+  LootTableDefinition,
   MinecraftWikiMobSoundAlignment,
   MinecraftWikiMobSoundSnapshot,
   MobImageDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   ResourcePackDefinition,
+  TagDefinition,
   TextureDefinition,
+  TranslationEntry,
   VersionDataset,
   VersionDiff,
 } from "../domain/types.js";
@@ -47,6 +52,15 @@ export class DatasetStore {
       writeJsonFile(join(directory, "textures.json"), dataset.textures),
       writeJsonFile(join(directory, "models.json"), dataset.models),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
+      writeJsonFile(join(directory, "enchantments.json"), dataset.enchantments),
+      writeJsonFile(join(directory, "tags.json"), dataset.tags),
+      writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
+      writeJsonFile(join(directory, "advancements.json"), dataset.advancements),
+      writeJsonFile(join(directory, "translations.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        translations: dataset.translations,
+      }),
       writeJsonFile(join(directory, "mob-images.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -74,14 +88,17 @@ export class DatasetStore {
         palettes?: PaletteDefinition[];
         itemStats?: ItemStatDefinition[];
         blockProperties?: BlockPropertyDefinition[];
+        enchantments?: EnchantmentDefinition[];
+        tags?: TagDefinition[];
+        lootTables?: LootTableDefinition[];
+        advancements?: AdvancementDefinition[];
+        translations?: TranslationEntry[];
         mobImages?: MobImageDefinition[];
         mobSounds?: MobSoundDefinition[];
         mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
         resourcePack?: ResourcePackDefinition;
       }
-    >(
-      join(datasetVersionDir(this.paths, version), "dataset.json"),
-    );
+    >(join(datasetVersionDir(this.paths, version), "dataset.json"));
 
     return {
       ...dataset,
@@ -92,6 +109,11 @@ export class DatasetStore {
       palettes: dataset.palettes ?? [],
       itemStats: dataset.itemStats ?? [],
       blockProperties: dataset.blockProperties ?? [],
+      enchantments: dataset.enchantments ?? [],
+      tags: dataset.tags ?? [],
+      lootTables: dataset.lootTables ?? [],
+      advancements: dataset.advancements ?? [],
+      translations: dataset.translations ?? [],
       mobImages: dataset.mobImages ?? [],
       mobSounds: dataset.mobSounds ?? [],
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
@@ -174,7 +196,9 @@ export class DatasetStore {
           continue;
         }
 
-        const buffer = variant.sourcePath ? await source.readBuffer(variant.sourcePath) : createMobPlaceholderImage(mobImage.localId);
+        const buffer = variant.sourcePath
+          ? await source.readBuffer(variant.sourcePath)
+          : createMobPlaceholderImage(mobImage.localId);
         await writeBufferFile(join(directory, variant.imagePath), buffer);
         exportedPaths.add(variant.imagePath);
       }

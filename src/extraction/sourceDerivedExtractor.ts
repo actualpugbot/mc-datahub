@@ -200,9 +200,11 @@ function toBlockPropertyDefinition(
     sourcePath,
     sourceSymbol: declaration.symbol,
     copiedFrom,
-    destroyTime: parseLastNumericCall(normalizedProperties, "destroyTime") ?? destroyTimeFromStrength ?? resolveInstabreakDestroyTime(normalizedProperties),
-    explosionResistance:
-      parseLastNumericCall(normalizedProperties, "explosionResistance") ?? explosionResistanceFromStrength,
+    destroyTime:
+      parseLastNumericCall(normalizedProperties, "destroyTime") ??
+      destroyTimeFromStrength ??
+      resolveInstabreakDestroyTime(normalizedProperties),
+    explosionResistance: parseLastNumericCall(normalizedProperties, "explosionResistance") ?? explosionResistanceFromStrength,
     requiresCorrectToolForDrops: normalizedProperties.includes(".requiresCorrectToolForDrops()"),
     ignitedByLava: normalizedProperties.includes(".ignitedByLava()"),
     randomTicks: normalizedProperties.includes(".randomTicks()"),
@@ -383,10 +385,7 @@ function resolveItemArmorStats(
   return undefined;
 }
 
-function resolveItemFoodStats(
-  propertiesExpression: string,
-  foods: Map<string, FoodTemplate>,
-): ItemFoodStats | undefined {
+function resolveItemFoodStats(propertiesExpression: string, foods: Map<string, FoodTemplate>): ItemFoodStats | undefined {
   const argumentsList = findLastCallArguments(propertiesExpression, "food");
   if (!argumentsList || argumentsList.length === 0) {
     return undefined;
@@ -488,7 +487,8 @@ function resolveInstabreakDestroyTime(expression: string): number | undefined {
 }
 
 function resolveCopiedFrom(expression: string): string | undefined {
-  const copiedFrom = findLastCallArguments(expression, "ofLegacyCopy")?.[0] ?? findLastCallArguments(expression, "ofFullCopy")?.[0];
+  const copiedFrom =
+    findLastCallArguments(expression, "ofLegacyCopy")?.[0] ?? findLastCallArguments(expression, "ofFullCopy")?.[0];
   const normalized = normalizeReferenceValue(copiedFrom);
   return normalized ? normalizeMinecraftId(normalized) : undefined;
 }
@@ -526,12 +526,7 @@ function parseToolMaterials(source: string): Map<string, ToolMaterialStats> {
     const speed = parseJavaNumber(call.args[2]);
     const attackDamageBonus = parseJavaNumber(call.args[3]);
     const enchantability = parseJavaInteger(call.args[4]);
-    if (
-      durability === undefined ||
-      speed === undefined ||
-      attackDamageBonus === undefined ||
-      enchantability === undefined
-    ) {
+    if (durability === undefined || speed === undefined || attackDamageBonus === undefined || enchantability === undefined) {
       continue;
     }
 
@@ -567,10 +562,7 @@ function parseArmorDurability(source: string): Record<ArmorTypeKey, number> {
   };
 }
 
-function parseArmorMaterials(
-  source: string,
-  armorDurability: Record<ArmorTypeKey, number>,
-): Map<string, ArmorMaterialStats> {
+function parseArmorMaterials(source: string, _armorDurability: Record<ArmorTypeKey, number>): Map<string, ArmorMaterialStats> {
   const declarations = parseAssignments(source, "ArmorMaterial");
   const materials = new Map<string, ArmorMaterialStats>();
 
@@ -613,9 +605,7 @@ function parseArmorMaterials(
   return materials;
 }
 
-function extractMakeDefenseArguments(
-  expression: string | undefined,
-): Record<ArmorTypeKey, number> | undefined {
+function extractMakeDefenseArguments(expression: string | undefined): Record<ArmorTypeKey, number> | undefined {
   if (!expression) {
     return undefined;
   }
@@ -768,7 +758,10 @@ function parseTopLevelCall(expression: string): ParsedCall | undefined {
   }
 
   return {
-    name: normalized.slice(0, openIndex).trim().replace(/^new\s+/, ""),
+    name: normalized
+      .slice(0, openIndex)
+      .trim()
+      .replace(/^new\s+/, ""),
     args: splitTopLevelArgs(normalized.slice(openIndex + 1, closeIndex)),
   };
 }

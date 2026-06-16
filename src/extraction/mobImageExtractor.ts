@@ -81,9 +81,7 @@ export class MobImageExtractor {
         ? await this.collectRendererTextureCandidates(rendererClass, decompiledClientRoot, mob.localId, entityTexturePathSet)
         : [];
       const candidates =
-        rendererCandidates.length > 0
-          ? rendererCandidates
-          : this.findFallbackTextureCandidates(mob.localId, entityTexturePaths);
+        rendererCandidates.length > 0 ? rendererCandidates : this.findFallbackTextureCandidates(mob.localId, entityTexturePaths);
       const variants =
         candidates.length > 0
           ? candidates.map((candidate) => this.toVariantDefinition(candidate))
@@ -142,7 +140,13 @@ export class MobImageExtractor {
     entityTexturePathSet: Set<string>,
   ): Promise<RankedTextureCandidate[]> {
     const sourcePaths = new Set<string>();
-    await this.collectRendererTexturePaths(rendererClass, decompiledClientRoot, entityTexturePathSet, sourcePaths, new Set<string>());
+    await this.collectRendererTexturePaths(
+      rendererClass,
+      decompiledClientRoot,
+      entityTexturePathSet,
+      sourcePaths,
+      new Set<string>(),
+    );
 
     return this.rankTextureCandidates(
       localId,
@@ -196,7 +200,12 @@ export class MobImageExtractor {
   }
 
   private findFallbackTextureCandidates(localId: string, entityTexturePaths: string[]): RankedTextureCandidate[] {
-    return this.rankTextureCandidates(localId, entityTexturePaths, "asset-search", (relativePath) => !isFallbackExcluded(relativePath));
+    return this.rankTextureCandidates(
+      localId,
+      entityTexturePaths,
+      "asset-search",
+      (relativePath) => !isFallbackExcluded(relativePath),
+    );
   }
 
   private rankTextureCandidates(
@@ -262,7 +271,11 @@ function isFallbackExcluded(relativePath: string): boolean {
 }
 
 function classifyTextureRole(localId: string, relativePath: string): MobImageVariantDefinition["role"] {
-  const basename = relativePath.replace(/\.png$/i, "").split("/").pop() ?? relativePath;
+  const basename =
+    relativePath
+      .replace(/\.png$/i, "")
+      .split("/")
+      .pop() ?? relativePath;
   const basenameTokens = tokenize(basename);
   const searchTerms = buildSearchTerms(localId);
 
@@ -294,7 +307,7 @@ function scoreTextureCandidate(
 ): number {
   const withoutExtension = relativePath.replace(/\.png$/i, "");
   const basename = withoutExtension.split("/").pop() ?? withoutExtension;
-  const collapsedPath = withoutExtension.replace(/[\/_]/g, "");
+  const collapsedPath = withoutExtension.replace(/[/_]/g, "");
   const pathTokens = tokenize(withoutExtension);
   const mobTokens = tokenize(localId);
   const searchTerms = buildSearchTerms(localId);

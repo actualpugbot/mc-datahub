@@ -1,0 +1,8 @@
+# Normalize all text files to LF so Prettier's output is consistent across
+# Windows/WSL/Linux checkouts (the repo is developed across all three).
+* text=auto eol=lf
+
+# Treat extracted/binary assets as binary regardless of contents.
+*.png binary
+*.ogg binary
+*.jar binary
