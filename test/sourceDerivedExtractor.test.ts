@@ -125,6 +125,49 @@ public enum ArmorType {
     expect(result.itemStats.find((entry) => entry.id === "minecraft:stone")?.registration).toBe("block");
   });
 
+  test("derives armor durability from the parsed ArmorType base values, not hard-coded defaults", async () => {
+    const root = await createTempClientRoot();
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/item/Items.java",
+      `package net.minecraft.world.item;
+
+public class Items {
+   public static final Item CHAINMAIL_HELMET = registerItem(
+      "chainmail_helmet", new Item.Properties().humanoidArmor(ArmorMaterials.CHAINMAIL, ArmorType.HELMET)
+   );
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/item/equipment/ArmorMaterials.java",
+      `package net.minecraft.world.item.equipment;
+
+public interface ArmorMaterials {
+   ArmorMaterial CHAINMAIL = new ArmorMaterial(15, makeDefense(1, 4, 5, 2, 4), 12, null, 0.0F, 0.0F, null, null);
+}`,
+    );
+    // HELMET base durability here (25) differs from DEFAULT_ARMOR_DURABILITY.helmet (11).
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/item/equipment/ArmorType.java",
+      `package net.minecraft.world.item.equipment;
+
+public enum ArmorType {
+   HELMET(null, 25, "helmet"),
+   CHESTPLATE(null, 16, "chestplate"),
+   LEGGINGS(null, 15, "leggings"),
+   BOOTS(null, 13, "boots"),
+   BODY(null, 16, "body");
+}`,
+    );
+
+    const result = await new DecompiledSourceExtractor(createConsoleLogger(false)).extract(root);
+
+    // durabilityMultiplier (15) * parsed helmet base (25) = 375, not the default-derived 15 * 11 = 165.
+    expect(result.itemStats.find((entry) => entry.id === "minecraft:chainmail_helmet")?.armor?.durability).toBe(375);
+  });
+
   test("extracts block properties from direct and helper-based property chains", async () => {
     const root = await createTempClientRoot();
     await writeJavaFile(
