@@ -97,11 +97,11 @@ export class DecompiledSourceExtractor {
     const toolMaterials = toolMaterialsSource ? parseToolMaterials(toolMaterialsSource) : new Map<string, ToolMaterialStats>();
     const armorDurability = armorTypesSource ? parseArmorDurability(armorTypesSource) : DEFAULT_ARMOR_DURABILITY;
     const armorMaterials = armorMaterialsSource
-      ? parseArmorMaterials(armorMaterialsSource, armorDurability)
+      ? parseArmorMaterials(armorMaterialsSource)
       : new Map<string, ArmorMaterialStats>();
 
     return parseStaticDeclarations(itemsSource, "Item")
-      .map((declaration) => toItemStatDefinition(declaration, ITEMS_PATH, foods, toolMaterials, armorMaterials))
+      .map((declaration) => toItemStatDefinition(declaration, ITEMS_PATH, foods, toolMaterials, armorMaterials, armorDurability))
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
@@ -149,6 +149,7 @@ function toItemStatDefinition(
   foods: Map<string, FoodTemplate>,
   toolMaterials: Map<string, ToolMaterialStats>,
   armorMaterials: Map<string, ArmorMaterialStats>,
+  armorDurability: Record<ArmorTypeKey, number>,
 ): ItemStatDefinition {
   const outerCall = parseTopLevelCall(declaration.expression);
   const registration = outerCall?.name === "registerBlock" ? "block" : "item";
@@ -156,7 +157,7 @@ function toItemStatDefinition(
   const propertiesExpression = extractItemPropertiesExpression(outerCall);
   const normalizedProperties = propertiesExpression ? collapseWhitespace(propertiesExpression) : "";
   const tool = resolveItemToolStats(declaration.expression, normalizedProperties, toolMaterials);
-  const armor = resolveItemArmorStats(normalizedProperties, armorMaterials);
+  const armor = resolveItemArmorStats(normalizedProperties, armorMaterials, armorDurability);
   const explicitDurability = parseLastNumericCall(normalizedProperties, "durability");
   const stackSizeOverride = parseLastIntegerCall(normalizedProperties, "stacksTo");
   const inferredDurability = explicitDurability ?? tool?.durability ?? armor?.durability;
@@ -326,6 +327,7 @@ function resolveConstructorToolStats(
 function resolveItemArmorStats(
   propertiesExpression: string,
   armorMaterials: Map<string, ArmorMaterialStats>,
+  armorDurability: Record<ArmorTypeKey, number>,
 ): ItemArmorStats | undefined {
   const humanoidArguments = findLastCallArguments(propertiesExpression, "humanoidArmor");
   if (humanoidArguments && humanoidArguments.length >= 2) {
@@ -337,7 +339,7 @@ function resolveItemArmorStats(
         category: "humanoid",
         material: materialName,
         type: armorType,
-        durability: material ? material.durabilityMultiplier * DEFAULT_ARMOR_DURABILITY[armorType] : undefined,
+        durability: material ? material.durabilityMultiplier * armorDurability[armorType] : undefined,
         defense: material?.defense[armorType],
         enchantability: material?.enchantability,
         toughness: material?.toughness,
@@ -365,7 +367,7 @@ function resolveItemArmorStats(
 
     const durability =
       category === "wolf" && material?.durabilityMultiplier !== undefined
-        ? material.durabilityMultiplier * DEFAULT_ARMOR_DURABILITY.body
+        ? material.durabilityMultiplier * armorDurability.body
         : undefined;
     const enchantability = category === "wolf" ? material?.enchantability : undefined;
     return {
@@ -567,10 +569,7 @@ function parseArmorDurability(source: string): Record<ArmorTypeKey, number> {
   };
 }
 
-function parseArmorMaterials(
-  source: string,
-  armorDurability: Record<ArmorTypeKey, number>,
-): Map<string, ArmorMaterialStats> {
+function parseArmorMaterials(source: string): Map<string, ArmorMaterialStats> {
   const declarations = parseAssignments(source, "ArmorMaterial");
   const materials = new Map<string, ArmorMaterialStats>();
 
@@ -630,21 +629,17 @@ function extractMakeDefenseArguments(
   const chestplate = parseJavaInteger(call.args[2]);
   const helmet = parseJavaInteger(call.args[3]);
   const body = parseJavaInteger(call.args[4]);
-  if ([boots, leggings, chestplate, helmet, body].some((value) => value === undefined)) {
+  if (
+    boots === undefined ||
+    leggings === undefined ||
+    chestplate === undefined ||
+    helmet === undefined ||
+    body === undefined
+  ) {
     return undefined;
   }
 
-  return {
-    boots: boots ?? armorDurabilityFallback("boots"),
-    leggings: leggings ?? armorDurabilityFallback("leggings"),
-    chestplate: chestplate ?? armorDurabilityFallback("chestplate"),
-    helmet: helmet ?? armorDurabilityFallback("helmet"),
-    body: body ?? armorDurabilityFallback("body"),
-  };
-}
-
-function armorDurabilityFallback(type: ArmorTypeKey): number {
-  return DEFAULT_ARMOR_DURABILITY[type];
+  return { boots, leggings, chestplate, helmet, body };
 }
 
 function extractItemPropertiesExpression(call: ParsedCall | undefined): string | undefined {
