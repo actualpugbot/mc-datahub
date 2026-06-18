@@ -1,11 +1,7 @@
 import { join } from "node:path";
 import { ensureDir, writeJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
-import {
-  versionDecompiledDir,
-  versionRemappedDir,
-  versionRoot,
-} from "../core/paths.js";
+import { versionDecompiledDir, versionRemappedDir, versionRoot } from "../core/paths.js";
 import type { AppConfig } from "../config.js";
 import type { DecompileReport, MappingArtifact, MappingProvider, ToolStepResult, VersionArtifacts } from "../domain/types.js";
 import { executeTemplateCommand, type TemplateContext } from "./toolchain.js";
@@ -16,7 +12,12 @@ export class DecompilePipeline {
     private readonly logger: Logger,
   ) {}
 
-  async run(version: string, artifacts: VersionArtifacts, mappings: MappingArtifact[], provider: MappingProvider): Promise<DecompileReport> {
+  async run(
+    version: string,
+    artifacts: VersionArtifacts,
+    mappings: MappingArtifact[],
+    provider: MappingProvider,
+  ): Promise<DecompileReport> {
     const report: DecompileReport = {
       version,
       mappingProvider: provider,
@@ -67,10 +68,7 @@ export class DecompilePipeline {
   }
 
   private selectMapping(kind: "client" | "server", mappings: MappingArtifact[]): MappingArtifact | undefined {
-    return (
-      mappings.find((artifact) => artifact.kind === kind) ??
-      mappings.find((artifact) => artifact.kind === "merged")
-    );
+    return mappings.find((artifact) => artifact.kind === kind) ?? mappings.find((artifact) => artifact.kind === "merged");
   }
 
   private async remap(

@@ -2,17 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { InMemoryArchiveSource } from "../src/archive/archiveSource.js";
 import type { ApiServer } from "../src/api/server.js";
 import { buildApiServer } from "../src/api/server.js";
 import { buildMobSoundExplorerPayload } from "../src/api/mobSoundExplorer.js";
+import { DiffEngine } from "../src/diff/diffEngine.js";
 import { loadConfig } from "../src/config.js";
 import { createConsoleLogger } from "../src/core/logger.js";
 import { DatasetStore } from "../src/datasets/datasetStore.js";
-import type {
-  MinecraftWikiMobSoundAlignment,
-  MobSoundDefinition,
-  VersionDataset,
-} from "../src/domain/types.js";
+import type { MinecraftWikiMobSoundAlignment, MobSoundDefinition, VersionDataset } from "../src/domain/types.js";
 
 const tempDirs = new Set<string>();
 
@@ -65,7 +63,7 @@ describe("mob sound explorer", () => {
 
   test("serves the split explorer pages and their JSON payloads", async () => {
     const setup = await createFixtureProject();
-    const server = buildApiServer(setup.config, setup.store);
+    const server = buildApiServer(setup.config, setup.store, new DiffEngine());
 
     const landingResponse = await issueRequest(server, "/mob-sounds/explorer");
     expect(landingResponse.statusCode).toBe(200);
@@ -99,6 +97,63 @@ describe("mob sound explorer", () => {
     expect(versionPayload.version).toBe("2.0");
     expect(versionPayload.compareToVersion).toBe("1.0");
     expect(versionPayload.rows.map((row) => row.id)).toEqual(["allay", "breeze", "ghast"]);
+  });
+
+  test("serves collections, pagination, summary, diff, assets, CORS, and OpenAPI", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "mc-datahub-api-"));
+    tempDirs.add(projectRoot);
+    const config = loadConfig(projectRoot);
+    const store = new DatasetStore(config.workspace, createConsoleLogger(false));
+
+    await store.saveDataset(createRichDataset("1.0", ["sharpness"]));
+    const source = new InMemoryArchiveSource({
+      "assets/minecraft/textures/block/stone.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    });
+    await store.saveDataset(createRichDataset("2.0", ["sharpness", "smite"]), source);
+
+    const server = buildApiServer(config, store, new DiffEngine());
+
+    const versions = JSON.parse((await issueRequest(server, "/versions")).body);
+    expect(versions.versions).toEqual(["1.0", "2.0"]);
+
+    const openapi = await issueRequest(server, "/openapi.json");
+    expect(JSON.parse(openapi.body).openapi).toBe("3.1.0");
+    expect(openapi.headers["access-control-allow-origin"]).toBe("*");
+
+    const summary = JSON.parse((await issueRequest(server, "/versions/2.0")).body);
+    expect(summary.counts.enchantments).toBe(2);
+    expect(summary.counts.blocks).toBe(1);
+
+    const enchantmentsPage = JSON.parse((await issueRequest(server, "/versions/2.0/enchantments?limit=1&offset=0")).body);
+    expect(enchantmentsPage.total).toBe(2);
+    expect(enchantmentsPage.count).toBe(1);
+    expect(enchantmentsPage.limit).toBe(1);
+    expect(enchantmentsPage.enchantments).toHaveLength(1);
+
+    const filtered = JSON.parse((await issueRequest(server, "/versions/2.0/enchantments?id=smite")).body);
+    expect(filtered.enchantments.map((entry: { id: string }) => entry.id)).toEqual(["minecraft:smite"]);
+
+    const blockTags = JSON.parse((await issueRequest(server, "/versions/2.0/tags?registry=block")).body);
+    expect(blockTags.tags.every((tag: { registry: string }) => tag.registry === "block")).toBe(true);
+    expect(blockTags.tags.length).toBeGreaterThan(0);
+
+    const diff = JSON.parse((await issueRequest(server, "/versions/1.0/diff/2.0?summary=true")).body);
+    expect(diff.summary.enchantments.added).toBe(1);
+
+    const fullDataset = JSON.parse((await issueRequest(server, "/versions/2.0/dataset")).body);
+    expect(fullDataset.version).toBe("2.0");
+    expect(fullDataset.enchantments).toHaveLength(2);
+
+    const asset = await issueRequest(server, "/versions/2.0/assets/images/block/stone.png");
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers["content-type"]).toBe("image/png");
+
+    const traversal = await issueRequest(server, "/versions/2.0/assets/..%2f..%2fstate.json");
+    expect([403, 404]).toContain(traversal.statusCode);
+
+    const preflight = await issueRequest(server, "/versions", "OPTIONS");
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers["access-control-allow-origin"]).toBe("*");
   });
 });
 
@@ -138,10 +193,7 @@ async function createFixtureProject() {
         title: "Category:Allay sounds",
         displayName: "Allay",
         url: "https://minecraft.wiki/w/Category%3AAllay_sounds",
-        files: [
-          createWikiFile("Allay ambient1.ogg", 11),
-          createWikiFile("Allay death1.ogg", 12),
-        ],
+        files: [createWikiFile("Allay ambient1.ogg", 11), createWikiFile("Allay death1.ogg", 12)],
       },
       {
         id: "creaking",
@@ -228,8 +280,76 @@ function createDataset(version: string, mobSounds: MobSoundDefinition[]): Versio
     palettes: [],
     itemStats: [],
     blockProperties: [],
+    enchantments: [],
+    tags: [],
+    lootTables: [],
+    advancements: [],
+    translations: [],
     mobImages: [],
     mobSounds,
+  };
+}
+
+function createRichDataset(version: string, enchantmentIds: string[]): VersionDataset {
+  return {
+    version,
+    generatedAt: "2026-04-12T20:00:00.000Z",
+    provenance: { sourceArtifacts: [], extractedFromPaths: [] },
+    blocks: [
+      {
+        id: "minecraft:stone",
+        tags: [],
+        modelRefs: [],
+        textureRefs: [],
+        blockstatePath: "assets/minecraft/blockstates/stone.json",
+        raw: {},
+      },
+    ],
+    items: [],
+    recipes: [],
+    textures: [
+      {
+        id: "minecraft:block/stone",
+        kind: "block",
+        sourcePath: "assets/minecraft/textures/block/stone.png",
+        imagePath: "images/block/stone.png",
+      },
+    ],
+    models: [],
+    palettes: [],
+    itemStats: [],
+    blockProperties: [],
+    enchantments: enchantmentIds.map((id) => ({
+      id: `minecraft:${id}`,
+      maxLevel: 5,
+      weight: 10,
+      slots: ["mainhand"],
+      sourcePath: `data/minecraft/enchantment/${id}.json`,
+      raw: {},
+    })),
+    tags: [
+      {
+        id: "minecraft:base_stone_overworld",
+        registry: "block",
+        replace: false,
+        values: ["minecraft:stone"],
+        sourcePath: "data/minecraft/tags/block/base_stone_overworld.json",
+        raw: {},
+      },
+      {
+        id: "minecraft:stone_tool_materials",
+        registry: "item",
+        replace: false,
+        values: ["minecraft:cobblestone"],
+        sourcePath: "data/minecraft/tags/item/stone_tool_materials.json",
+        raw: {},
+      },
+    ],
+    lootTables: [],
+    advancements: [],
+    translations: [{ key: "block.minecraft.stone", value: "Stone" }],
+    mobImages: [],
+    mobSounds: [],
   };
 }
 
@@ -281,7 +401,7 @@ function createWikiFile(fileName: string, pageId: number) {
   };
 }
 
-async function issueRequest(server: ApiServer, url: string) {
+async function issueRequest(server: ApiServer, url: string, method = "GET") {
   return new Promise<{ statusCode: number; headers: Record<string, string>; body: string }>((resolve) => {
     const headers: Record<string, string> = {};
     const response = {
@@ -289,11 +409,11 @@ async function issueRequest(server: ApiServer, url: string) {
       setHeader(name: string, value: string) {
         headers[name.toLowerCase()] = value;
       },
-      end(value?: string) {
+      end(value?: string | Buffer) {
         resolve({
           statusCode: this.statusCode,
           headers,
-          body: value ?? "",
+          body: typeof value === "string" ? value : value ? value.toString("utf8") : "",
         });
       },
     };
@@ -302,7 +422,7 @@ async function issueRequest(server: ApiServer, url: string) {
       "request",
       {
         url,
-        method: "GET",
+        method,
         headers: {
           host: "test.local",
         },

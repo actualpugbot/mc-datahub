@@ -70,16 +70,7 @@ describe("data extractor", () => {
         [69, 67, 60],
         [42, 40, 34],
       ]),
-      "assets/minecraft/textures/trims/color_palettes/trim_palette.png": createGrayscalePng([
-        224,
-        192,
-        160,
-        128,
-        96,
-        64,
-        32,
-        0,
-      ]),
+      "assets/minecraft/textures/trims/color_palettes/trim_palette.png": createGrayscalePng([224, 192, 160, 128, 96, 64, 32, 0]),
       "assets/minecraft/textures/colormap/grass.png": createRgbPng([
         [94, 200, 64],
         [105, 197, 73],
@@ -152,15 +143,9 @@ describe("data extractor", () => {
       "#240c53",
       "#17063b",
     ]);
-    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/material/amethyst-radiance")).toBe(
-      true,
-    );
-    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/fusion/amethyst-copper")).toBe(
-      true,
-    );
-    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/biome/sunlit-meadow")).toBe(
-      true,
-    );
+    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/material/amethyst-radiance")).toBe(true);
+    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/fusion/amethyst-copper")).toBe(true);
+    expect(dataset.palettes.some((palette) => palette.id === "minecraft:palette/curated/biome/sunlit-meadow")).toBe(true);
   });
 
   test("reads recipes from singular recipe directories used by bundled jars", async () => {
@@ -192,6 +177,87 @@ describe("data extractor", () => {
         count: 4,
       },
     });
+  });
+
+  test("extracts enchantments, tags, loot tables, advancements, and translations", async () => {
+    const archive = new InMemoryArchiveSource({
+      "data/minecraft/enchantment/sharpness.json": JSON.stringify({
+        description: { translate: "enchantment.minecraft.sharpness" },
+        supported_items: "#minecraft:enchantable/sharp_weapon",
+        weight: 10,
+        max_level: 5,
+        anvil_cost: 1,
+        slots: ["mainhand"],
+      }),
+      "data/minecraft/tags/block/planks.json": JSON.stringify({
+        replace: false,
+        values: ["minecraft:oak_planks", "#minecraft:non_flammable_wood"],
+      }),
+      "data/minecraft/tags/item/planks.json": JSON.stringify({
+        values: [{ id: "minecraft:oak_planks", required: false }],
+      }),
+      "data/minecraft/loot_table/blocks/oak_planks.json": JSON.stringify({
+        type: "minecraft:block",
+        pools: [
+          {
+            rolls: 1,
+            entries: [{ type: "minecraft:item", name: "minecraft:oak_planks" }],
+            functions: [{ function: "minecraft:explosion_decay" }],
+          },
+        ],
+      }),
+      "data/minecraft/advancement/story/root.json": JSON.stringify({
+        display: {
+          title: { translate: "advancements.story.root.title" },
+          description: { translate: "advancements.story.root.description" },
+          icon: { id: "minecraft:grass_block" },
+          frame: "task",
+        },
+        criteria: { crafting_table: { trigger: "minecraft:inventory_changed" } },
+        rewards: { experience: 10 },
+      }),
+      "assets/minecraft/lang/en_us.json": JSON.stringify({
+        "block.minecraft.oak_planks": "Oak Planks",
+        "enchantment.minecraft.sharpness": "Sharpness",
+      }),
+    });
+
+    const dataset = await new MinecraftDataExtractor(createConsoleLogger(false)).extract("26.1.1", [archive]);
+
+    expect(dataset.enchantments[0]).toMatchObject({
+      id: "minecraft:sharpness",
+      descriptionKey: "enchantment.minecraft.sharpness",
+      maxLevel: 5,
+      weight: 10,
+      slots: ["mainhand"],
+    });
+
+    const blockTag = dataset.tags.find((tag) => tag.registry === "block" && tag.id === "minecraft:planks");
+    expect(blockTag?.values).toEqual(["minecraft:oak_planks", "#minecraft:non_flammable_wood"]);
+    const itemTag = dataset.tags.find((tag) => tag.registry === "item" && tag.id === "minecraft:planks");
+    expect(itemTag?.values).toEqual(["minecraft:oak_planks"]);
+
+    expect(dataset.lootTables[0]).toMatchObject({
+      id: "minecraft:blocks/oak_planks",
+      type: "minecraft:block",
+      poolCount: 1,
+      itemDrops: ["minecraft:oak_planks"],
+      functions: ["minecraft:explosion_decay"],
+    });
+
+    expect(dataset.advancements[0]).toMatchObject({
+      id: "minecraft:story/root",
+      titleKey: "advancements.story.root.title",
+      iconItem: "minecraft:grass_block",
+      frame: "task",
+      criteria: ["crafting_table"],
+      rewards: { experience: 10 },
+    });
+
+    expect(dataset.translations).toEqual([
+      { key: "block.minecraft.oak_planks", value: "Oak Planks" },
+      { key: "enchantment.minecraft.sharpness", value: "Sharpness" },
+    ]);
   });
 });
 

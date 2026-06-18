@@ -9,6 +9,7 @@
 - Downloads client and server JARs into versioned workspace directories.
 - Orchestrates a decompilation pipeline that can plug into Tiny Remapper and Vineflower.
 - Extracts normalized block, item, recipe, model, and texture datasets from vanilla assets and data packs.
+- Extracts additional data-pack collections: enchantments, registry tags, loot tables, advancements, and `en_us` translations.
 - Derives source-based `item-stats` and `block-properties` datasets from decompiled client source when available.
 - Exports extracted texture PNGs alongside each versioned dataset.
 - Derives mob image metadata from client entity renderers and exports representative mob PNGs.
@@ -33,6 +34,11 @@ workspace/
     items.json
     item-stats.json
     recipes.json
+    enchantments.json
+    tags.json
+    loot-tables.json
+    advancements.json
+    translations.json
     textures.json
     images/             Extracted texture PNG files
     mob-images.json
@@ -57,8 +63,25 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
+- `enchantments.json`: data-driven enchantment definitions (description key, supported items, max level, weight, anvil cost, slots)
+- `tags.json`: registry tags (block, item, fluid, entity_type, …) with their resolved values
+- `loot-tables.json`: loot tables with derived item drops and the loot functions they use
+- `advancements.json`: advancement tree with parent, display keys, icon, criteria, and rewards
+- `translations.json`: `en_us` language entries (display names) as `{ key, value }` pairs
 
-For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection. If you want an HTTP interface instead of reading files directly, the API exposes `GET /versions/:version/blocks`, `items`, `item-stats`, `block-properties`, `mob-images`, `mob-sounds`, `recipes`, and `palettes`.
+For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection.
+
+If you consume `mc-datahub` from another TypeScript project, you can import the dataset shapes as a typed contract instead of re-declaring them: `import type { VersionDataset } from "mc-datahub"` (or `"mc-datahub/types"`). The build emits `.d.ts` declarations for the whole public surface.
+
+If you want an HTTP interface instead of reading files directly, the API exposes a read-only, CORS-enabled JSON endpoint per collection plus combined and diff views:
+
+- `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
+- `GET /versions/:version/dataset` — the full combined dataset in one response
+- `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,tags,loot-tables,advancements,translations,palettes,mob-images,mob-sounds}`
+- `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
+
+Every collection endpoint supports `?id=` (exact id) or `?q=` (substring) filtering and `?limit=`/`?offset=` pagination; `tags` also supports `?registry=`. A real OpenAPI 3.1 document is served at `GET /openapi.json` for Swagger UI and client codegen.
 
 For quick manual inspection, the API now serves a small mob sound explorer landing page at `GET /mob-sounds/explorer` with two focused views:
 
@@ -82,10 +105,16 @@ npm run cli -- process version 1.21.5
 npm run cli -- process version latest-snapshot
 npm run cli -- toolchain doctor
 npm run cli -- diff versions 1.21.4 1.21.5
+npm run cli -- versions list
 npm run cli -- dump recipes 1.21.5 --output ./recipes.json
+npm run cli -- dump collection enchantments 1.21.5 --output ./enchantments.json
 npm run cli -- dump mob-audio 1.21.5
 npm run cli -- api serve --port 4000
 ```
+
+`versions list` reports which versions already have a processed dataset on disk.
+
+`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 
@@ -214,3 +243,17 @@ The tests focus on the modular pieces that are easiest to regress:
 - news parsing and version detection
 - normalized data extraction
 - structured dataset diffs
+- HTTP API routing, filtering, pagination, diff, and asset serving
+
+## Development Tooling
+
+```bash
+npm run typecheck     # tsc --noEmit
+npm run lint          # eslint (flat config)
+npm run format        # prettier --write
+npm run format:check  # prettier --check (CI uses this)
+npm test              # vitest
+npm run build         # clean dist/, then emit JS + .d.ts declarations
+```
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, test, and build across Node 18/20/22 on every push and pull request.

@@ -40,10 +40,7 @@ interface MobAudioFilePlan {
   hash: string;
 }
 
-export async function buildMobAudioDumpPayload(
-  version: string,
-  loader: MobAudioDumpLoader,
-): Promise<MobAudioDumpPayload> {
+export async function buildMobAudioDumpPayload(version: string, loader: MobAudioDumpLoader): Promise<MobAudioDumpPayload> {
   try {
     const dataset = await loader.load(version);
     return {

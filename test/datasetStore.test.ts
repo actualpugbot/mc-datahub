@@ -40,6 +40,11 @@ describe("dataset store", () => {
       palettes: [],
       itemStats: [],
       blockProperties: [],
+      enchantments: [],
+      tags: [],
+      lootTables: [],
+      advancements: [],
+      translations: [],
       mobImages: [
         {
           id: "minecraft:allay",

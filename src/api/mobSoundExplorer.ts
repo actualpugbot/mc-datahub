@@ -284,9 +284,7 @@ function buildRowDiff(current: MobSoundDefinition | undefined, compareTo: MobSou
     removedEventIds: subtractValues(compareToEventIds, currentEventIds),
     addedSoundPaths: subtractValues(currentSoundPaths, compareToSoundPaths),
     removedSoundPaths: subtractValues(compareToSoundPaths, currentSoundPaths),
-    metadataChanged:
-      Boolean(current && compareTo) &&
-      stableJsonHash(current) !== stableJsonHash(compareTo),
+    metadataChanged: Boolean(current && compareTo) && stableJsonHash(current) !== stableJsonHash(compareTo),
   };
 }
 
@@ -362,9 +360,7 @@ function collectSoundPaths(mob: MobSoundDefinition | undefined): string[] {
   }
 
   return Array.from(
-    new Set(
-      mob.soundEvents.flatMap((soundEvent) => soundEvent.variants.map((variant) => variant.soundPath)),
-    ),
+    new Set(mob.soundEvents.flatMap((soundEvent) => soundEvent.variants.map((variant) => variant.soundPath))),
   ).sort();
 }
 

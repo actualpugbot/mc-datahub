@@ -127,11 +127,7 @@ export function decodePng(buffer: Buffer): DecodedPng {
         continue;
       }
 
-      pixels.push([
-        row.readUInt8(pixelOffset),
-        row.readUInt8(pixelOffset + 1),
-        row.readUInt8(pixelOffset + 2),
-      ]);
+      pixels.push([row.readUInt8(pixelOffset), row.readUInt8(pixelOffset + 1), row.readUInt8(pixelOffset + 2)]);
     }
 
     previousRow = row;

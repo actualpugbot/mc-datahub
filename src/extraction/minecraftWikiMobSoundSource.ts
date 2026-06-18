@@ -263,7 +263,12 @@ function buildCategoryAlignment(
   const matchedFileCount = category.files.length - unmatchedWikiFileTitles.length;
   const matchType =
     mappedMobIds.length === 0 ? "wiki-only" : mappedMobIds.length === 1 && mappedMobIds[0] === category.id ? "direct" : "grouped";
-  const coverage = matchType === "wiki-only" ? "wiki-only" : unmatchedWikiFileTitles.length === 0 && unmatchedLocalSoundPaths.length === 0 ? "exact" : "partial";
+  const coverage =
+    matchType === "wiki-only"
+      ? "wiki-only"
+      : unmatchedWikiFileTitles.length === 0 && unmatchedLocalSoundPaths.length === 0
+        ? "exact"
+        : "partial";
 
   return {
     id: category.id,
@@ -302,10 +307,7 @@ function collectUniqueVariants(mobSounds: MobSoundDefinition[]): Array<{ compari
     .sort((left, right) => left.soundPath.localeCompare(right.soundPath));
 }
 
-function resolveWikiCategoryId(
-  localId: string,
-  categoriesById: Map<string, MinecraftWikiMobSoundCategory>,
-): string | undefined {
+function resolveWikiCategoryId(localId: string, categoriesById: Map<string, MinecraftWikiMobSoundCategory>): string | undefined {
   if (categoriesById.has(localId)) {
     return localId;
   }

@@ -129,7 +129,9 @@ public class ShulkerRenderer extends MobRenderer {
       sourcePath: "assets/minecraft/textures/entity/cow/cow_temperate.png",
       origin: "asset-search",
     });
-    expect(imagesByLocalId.get("cow")?.variants.map((variant) => variant.imagePath)).toContain("mob-images/cow/cow_temperate_baby.png");
+    expect(imagesByLocalId.get("cow")?.variants.map((variant) => variant.imagePath)).toContain(
+      "mob-images/cow/cow_temperate_baby.png",
+    );
     expect(imagesByLocalId.get("giant")).toMatchObject({
       imagePath: "mob-images/zombie/zombie.png",
       sourcePath: "assets/minecraft/textures/entity/zombie/zombie.png",

@@ -73,8 +73,7 @@ export class MappingResolver {
       throw new Error(`No Yarn mappings were published for ${version}.`);
     }
 
-    const yarnVersion =
-      selected.version ?? (selected.build ? `${version}+build.${selected.build}` : undefined);
+    const yarnVersion = selected.version ?? (selected.build ? `${version}+build.${selected.build}` : undefined);
     if (!yarnVersion) {
       throw new Error(`Could not determine the Yarn mapping version for ${version}.`);
     }

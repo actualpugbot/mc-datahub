@@ -19,6 +19,10 @@ import { StateStore } from "./state/stateStore.js";
 import { VersionManifestResolver } from "./versions/manifestResolver.js";
 import { MinecraftNewsWatcher } from "./watcher/newsWatcher.js";
 
+// Public data contract: downstream consumers can `import type { VersionDataset, ... } from "mc-datahub"`
+// to type the JSON produced by this pipeline without re-declaring the shapes.
+export type * from "./domain/types.js";
+
 export function createApplicationContext(config: AppConfig, logger: Logger) {
   const http = new FetchHttpClient(logger);
   const cache = new FileCache(config.workspace.cacheDir);

@@ -1,22 +1,31 @@
 import type { Logger } from "../core/logger.js";
 import type {
+  AdvancementDefinition,
   BlockDefinition,
+  EnchantmentDefinition,
   ItemDefinition,
   JsonValue,
+  LootTableDefinition,
   ModelDefinition,
   RecipeDefinition,
+  TagDefinition,
   TextureDefinition,
+  TranslationEntry,
   VersionDataset,
 } from "../domain/types.js";
 import type { ArchiveSource } from "../archive/archiveSource.js";
 import { MergedArchiveSource } from "../archive/archiveSource.js";
 import {
   collectBlockModelRefs,
+  collectLootFunctions,
+  collectLootItemDrops,
   collectModelTextureRefs,
+  componentTranslationKey,
   idFromAssetPath,
   modelKindFromPath,
   normalizeMinecraftId,
   normalizeRecipe,
+  normalizeTagEntry,
   textureKindFromPath,
 } from "./normalizers.js";
 import { buildPalettes } from "./palettes.js";
@@ -27,6 +36,11 @@ const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const RECIPE_PREFIXES = ["data/minecraft/recipe/", "data/minecraft/recipes/"] as const;
 const BLOCK_TAG_PREFIX = "data/minecraft/tags/blocks/";
 const ITEM_TAG_PREFIX = "data/minecraft/tags/items/";
+const TAGS_PREFIX = "data/minecraft/tags/";
+const ENCHANTMENT_PREFIXES = ["data/minecraft/enchantment/", "data/minecraft/enchantments/"] as const;
+const LOOT_TABLE_PREFIXES = ["data/minecraft/loot_table/", "data/minecraft/loot_tables/"] as const;
+const ADVANCEMENT_PREFIXES = ["data/minecraft/advancement/", "data/minecraft/advancements/"] as const;
+const LANG_PREFIX = "assets/minecraft/lang/";
 
 export class MinecraftDataExtractor {
   constructor(private readonly logger: Logger) {}
@@ -43,6 +57,11 @@ export class MinecraftDataExtractor {
     const itemTags = await this.readTags(paths, source, ITEM_TAG_PREFIX);
     const blocks = await this.readBlocks(paths, source, models, blockTags);
     const items = await this.readItems(paths, source, models, itemTags, recipes);
+    const enchantments = await this.readEnchantments(paths, source);
+    const tags = await this.readTagDefinitions(paths, source);
+    const lootTables = await this.readLootTables(paths, source);
+    const advancements = await this.readAdvancements(paths, source);
+    const translations = await this.readTranslations(paths, source);
 
     return {
       version,
@@ -59,6 +78,11 @@ export class MinecraftDataExtractor {
       palettes,
       itemStats: [],
       blockProperties: [],
+      enchantments,
+      tags,
+      lootTables,
+      advancements,
+      translations,
       mobImages: [],
       mobSounds: [],
     };
@@ -258,6 +282,219 @@ export class MinecraftDataExtractor {
 
     if (model.parent) {
       this.collectModelTextures(model.parent, modelMap, textureRefs, visited);
+    }
+  }
+
+  private async readEnchantments(paths: string[], source: ArchiveSource): Promise<EnchantmentDefinition[]> {
+    const enchantmentPaths = paths.filter(
+      (path) => ENCHANTMENT_PREFIXES.some((prefix) => path.startsWith(prefix)) && path.endsWith(".json"),
+    );
+    const enchantments: EnchantmentDefinition[] = [];
+
+    for (const path of enchantmentPaths) {
+      const prefix = ENCHANTMENT_PREFIXES.find((candidate) => path.startsWith(candidate));
+      if (!prefix) {
+        continue;
+      }
+
+      try {
+        const raw = await source.readJson<JsonValue>(path);
+        if (Array.isArray(raw) || !raw || typeof raw !== "object") {
+          continue;
+        }
+
+        const descriptionKey = componentTranslationKey(raw.description as JsonValue | undefined);
+        enchantments.push({
+          id: idFromAssetPath(prefix, path),
+          descriptionKey,
+          description: typeof raw.description === "string" ? raw.description : undefined,
+          supportedItems: typeof raw.supported_items === "string" ? raw.supported_items : undefined,
+          primaryItems: typeof raw.primary_items === "string" ? raw.primary_items : undefined,
+          maxLevel: typeof raw.max_level === "number" ? raw.max_level : undefined,
+          weight: typeof raw.weight === "number" ? raw.weight : undefined,
+          anvilCost: typeof raw.anvil_cost === "number" ? raw.anvil_cost : undefined,
+          slots: Array.isArray(raw.slots) ? raw.slots.filter((slot): slot is string => typeof slot === "string") : [],
+          exclusiveSet: typeof raw.exclusive_set === "string" ? raw.exclusive_set : undefined,
+          sourcePath: path,
+          raw,
+        });
+      } catch (error) {
+        this.logger.warn(`Skipping malformed enchantment file ${path}: ${(error as Error).message}`);
+      }
+    }
+
+    return enchantments.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  private async readTagDefinitions(paths: string[], source: ArchiveSource): Promise<TagDefinition[]> {
+    const tagPaths = paths.filter((path) => path.startsWith(TAGS_PREFIX) && path.endsWith(".json"));
+    const tags: TagDefinition[] = [];
+
+    for (const path of tagPaths) {
+      try {
+        const raw = await source.readJson<JsonValue>(path);
+        if (Array.isArray(raw) || !raw || typeof raw !== "object") {
+          continue;
+        }
+
+        const remainder = path.slice(TAGS_PREFIX.length, path.length - ".json".length);
+        const separatorIndex = remainder.indexOf("/");
+        if (separatorIndex <= 0) {
+          continue;
+        }
+
+        const registry = remainder.slice(0, separatorIndex);
+        const tagId = normalizeMinecraftId(remainder.slice(separatorIndex + 1));
+        const values = Array.isArray(raw.values)
+          ? raw.values.map((value) => normalizeTagEntry(value)).filter((value): value is string => typeof value === "string")
+          : [];
+
+        tags.push({
+          id: tagId,
+          registry,
+          replace: raw.replace === true,
+          values,
+          sourcePath: path,
+          raw,
+        });
+      } catch (error) {
+        this.logger.warn(`Skipping malformed tag file ${path}: ${(error as Error).message}`);
+      }
+    }
+
+    return tags.sort((left, right) => `${left.registry}/${left.id}`.localeCompare(`${right.registry}/${right.id}`));
+  }
+
+  private async readLootTables(paths: string[], source: ArchiveSource): Promise<LootTableDefinition[]> {
+    const lootPaths = paths.filter(
+      (path) => LOOT_TABLE_PREFIXES.some((prefix) => path.startsWith(prefix)) && path.endsWith(".json"),
+    );
+    const lootTables: LootTableDefinition[] = [];
+
+    for (const path of lootPaths) {
+      const prefix = LOOT_TABLE_PREFIXES.find((candidate) => path.startsWith(candidate));
+      if (!prefix) {
+        continue;
+      }
+
+      try {
+        const raw = await source.readJson<JsonValue>(path);
+        const type = !Array.isArray(raw) && raw && typeof raw === "object" && typeof raw.type === "string" ? raw.type : undefined;
+        const poolCount =
+          !Array.isArray(raw) && raw && typeof raw === "object" && Array.isArray(raw.pools) ? raw.pools.length : 0;
+
+        lootTables.push({
+          id: idFromAssetPath(prefix, path),
+          type,
+          poolCount,
+          itemDrops: collectLootItemDrops(raw),
+          functions: collectLootFunctions(raw),
+          sourcePath: path,
+          raw,
+        });
+      } catch (error) {
+        this.logger.warn(`Skipping malformed loot table file ${path}: ${(error as Error).message}`);
+      }
+    }
+
+    return lootTables.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  private async readAdvancements(paths: string[], source: ArchiveSource): Promise<AdvancementDefinition[]> {
+    const advancementPaths = paths.filter(
+      (path) => ADVANCEMENT_PREFIXES.some((prefix) => path.startsWith(prefix)) && path.endsWith(".json"),
+    );
+    const advancements: AdvancementDefinition[] = [];
+
+    for (const path of advancementPaths) {
+      const prefix = ADVANCEMENT_PREFIXES.find((candidate) => path.startsWith(candidate));
+      if (!prefix) {
+        continue;
+      }
+
+      try {
+        const raw = await source.readJson<JsonValue>(path);
+        if (Array.isArray(raw) || !raw || typeof raw !== "object") {
+          continue;
+        }
+
+        const display = raw.display && typeof raw.display === "object" && !Array.isArray(raw.display) ? raw.display : undefined;
+        const icon =
+          display && display.icon && typeof display.icon === "object" && !Array.isArray(display.icon) ? display.icon : undefined;
+        const iconItem =
+          icon && typeof icon.id === "string"
+            ? normalizeMinecraftId(icon.id)
+            : icon && typeof icon.item === "string"
+              ? normalizeMinecraftId(icon.item)
+              : undefined;
+        const criteria =
+          raw.criteria && typeof raw.criteria === "object" && !Array.isArray(raw.criteria)
+            ? Object.keys(raw.criteria).sort()
+            : [];
+
+        advancements.push({
+          id: idFromAssetPath(prefix, path),
+          parent: typeof raw.parent === "string" ? normalizeMinecraftId(raw.parent) : undefined,
+          titleKey: display ? componentTranslationKey(display.title as JsonValue | undefined) : undefined,
+          descriptionKey: display ? componentTranslationKey(display.description as JsonValue | undefined) : undefined,
+          iconItem,
+          frame: display && typeof display.frame === "string" ? display.frame : undefined,
+          criteria,
+          rewards: this.normalizeAdvancementRewards(raw.rewards as JsonValue | undefined),
+          sourcePath: path,
+          raw,
+        });
+      } catch (error) {
+        this.logger.warn(`Skipping malformed advancement file ${path}: ${(error as Error).message}`);
+      }
+    }
+
+    return advancements.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  private normalizeAdvancementRewards(value: JsonValue | undefined): AdvancementDefinition["rewards"] {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const toStringArray = (entry: JsonValue | undefined): string[] | undefined =>
+      Array.isArray(entry)
+        ? entry.filter((item): item is string => typeof item === "string").map((item) => normalizeMinecraftId(item))
+        : undefined;
+
+    const rewards: NonNullable<AdvancementDefinition["rewards"]> = {
+      recipes: toStringArray(value.recipes),
+      loot: toStringArray(value.loot),
+      experience: typeof value.experience === "number" ? value.experience : undefined,
+      function: typeof value.function === "string" ? normalizeMinecraftId(value.function) : undefined,
+    };
+
+    return Object.values(rewards).some((entry) => entry !== undefined) ? rewards : undefined;
+  }
+
+  private async readTranslations(paths: string[], source: ArchiveSource): Promise<TranslationEntry[]> {
+    const langPath = `${LANG_PREFIX}en_us.json`;
+    if (!paths.includes(langPath)) {
+      return [];
+    }
+
+    try {
+      const raw = await source.readJson<JsonValue>(langPath);
+      if (Array.isArray(raw) || !raw || typeof raw !== "object") {
+        return [];
+      }
+
+      const translations: TranslationEntry[] = [];
+      for (const [key, value] of Object.entries(raw)) {
+        if (typeof value === "string") {
+          translations.push({ key, value });
+        }
+      }
+
+      return translations.sort((left, right) => left.key.localeCompare(right.key));
+    } catch (error) {
+      this.logger.warn(`Skipping malformed language file ${langPath}: ${(error as Error).message}`);
+      return [];
     }
   }
 }

@@ -1,13 +1,7 @@
 import { accessSync, constants, existsSync, readdirSync } from "node:fs";
 import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
 
-export type VineflowerSource =
-  | "env-command"
-  | "env-jar"
-  | "workspace-tools-jar"
-  | "project-tools-jar"
-  | "path"
-  | "missing";
+export type VineflowerSource = "env-command" | "env-jar" | "workspace-tools-jar" | "project-tools-jar" | "path" | "missing";
 
 export interface ResolvedVineflowerTool {
   command?: string;

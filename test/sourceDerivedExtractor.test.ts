@@ -380,7 +380,12 @@ public class Blocks {
     const cutCopper = result.blockProperties.filter((entry) => entry.id.includes("cut_copper"));
 
     expect(cutCopper).toHaveLength(8);
-    for (const id of ["minecraft:cut_copper", "minecraft:exposed_cut_copper", "minecraft:waxed_cut_copper", "minecraft:waxed_oxidized_cut_copper"]) {
+    for (const id of [
+      "minecraft:cut_copper",
+      "minecraft:exposed_cut_copper",
+      "minecraft:waxed_cut_copper",
+      "minecraft:waxed_oxidized_cut_copper",
+    ]) {
       expect(result.blockProperties.find((entry) => entry.id === id)).toMatchObject({
         destroyTime: 3,
         explosionResistance: 6,
@@ -426,8 +431,12 @@ public class Blocks {
     expect(result.blockProperties.find((entry) => entry.id === "minecraft:copper")?.destroyTime).toBe(3);
     // ...and each cut_copper variant records the per-state block it copies from.
     expect(result.blockProperties.find((entry) => entry.id === "minecraft:cut_copper")?.copiedFrom).toBe("minecraft:copper");
-    expect(result.blockProperties.find((entry) => entry.id === "minecraft:exposed_cut_copper")?.copiedFrom).toBe("minecraft:exposed_copper");
-    expect(result.blockProperties.find((entry) => entry.id === "minecraft:waxed_oxidized_cut_copper")?.copiedFrom).toBe("minecraft:oxidized_copper");
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:exposed_cut_copper")?.copiedFrom).toBe(
+      "minecraft:exposed_copper",
+    );
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:waxed_oxidized_cut_copper")?.copiedFrom).toBe(
+      "minecraft:oxidized_copper",
+    );
   });
 
   test("resolves per-weather-state copper map colors, instruments, and light levels", async () => {
@@ -493,7 +502,9 @@ public class Blocks {
     });
     // copper_grate references COPPER_BLOCK's per-state map color via defaultMapColor().
     expect(result.blockProperties.find((entry) => entry.id === "minecraft:copper_grate")?.mapColor).toBe("color_orange");
-    expect(result.blockProperties.find((entry) => entry.id === "minecraft:oxidized_copper_grate")?.mapColor).toBe("warped_nylium");
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:oxidized_copper_grate")?.mapColor).toBe(
+      "warped_nylium",
+    );
   });
 
   test("inherits properties from ofFullCopy/ofLegacyCopy sources, including helper-registered blocks", async () => {
