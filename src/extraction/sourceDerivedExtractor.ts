@@ -19,13 +19,44 @@ interface StaticDeclaration {
 
 interface MethodDeclaration {
   name: string;
+  params: string[];
   body: string;
+}
+
+interface RegistrationHelper {
+  expression: string;
+  params: string[];
 }
 
 interface FoodTemplate {
   nutrition?: number;
   saturationModifier?: number;
   alwaysEdible: boolean;
+}
+
+interface DyeColorDefinition {
+  name: string;
+  mapColor: string;
+  terracottaColor: string;
+}
+
+interface ReferenceId {
+  block?: string;
+  item?: string;
+}
+
+// Index of the net/minecraft/references id classes, used to resolve `BlockItemIds.X` /
+// `BlockIds.X` / `ItemIds.X` symbols back to their registered ids. `singles` maps a
+// qualified reference (e.g. "BlockItemIds.STONE") to its block/item ids; `collections`
+// maps a color/copper collection reference to the full list of expanded ids.
+interface ReferenceIndex {
+  singles: Map<string, ReferenceId>;
+  collections: Map<string, string[]>;
+}
+
+interface SourceContext {
+  references: ReferenceIndex;
+  dyeColors: DyeColorDefinition[];
 }
 
 interface ToolMaterialStats {
@@ -51,6 +82,43 @@ const FOODS_PATH = "net/minecraft/world/food/Foods.java";
 const TOOL_MATERIALS_PATH = "net/minecraft/world/item/ToolMaterial.java";
 const ARMOR_MATERIALS_PATH = "net/minecraft/world/item/equipment/ArmorMaterials.java";
 const ARMOR_TYPES_PATH = "net/minecraft/world/item/equipment/ArmorType.java";
+const DYE_COLOR_PATH = "net/minecraft/world/item/DyeColor.java";
+// Reference id classes were introduced in the 26.2 source refactor; older versions
+// register blocks/items with inline string-literal ids and omit some of these files.
+const REFERENCE_ID_PATHS = [
+  "net/minecraft/references/BlockItemIds.java",
+  "net/minecraft/references/BlockIds.java",
+  "net/minecraft/references/ItemIds.java",
+];
+
+// Weathering-copper id prefixes, mirroring WeatheringCopperCollection.PREFIXES. The
+// collection expands each base name across four weather states, both unwaxed and waxed.
+const COPPER_WEATHERING_PREFIXES = ["", "exposed_", "weathered_", "oxidized_"] as const;
+const COPPER_WAXED_PREFIXES = ["waxed_", "waxed_exposed_", "waxed_weathered_", "waxed_oxidized_"] as const;
+// WeatheringCopper.WeatherState ordering; the nth state lines up with the nth weathering
+// (and waxed) id, so `idIndex % 4` selects the state for the per-state copper switches.
+const WEATHER_STATES = ["UNAFFECTED", "EXPOSED", "WEATHERED", "OXIDIZED"] as const;
+
+// Fallback dye-color ordering/map-colors used when DyeColor.java cannot be parsed. The
+// order mirrors the ColorCollection record fields so generated ids line up with the source.
+const FALLBACK_DYE_COLORS: DyeColorDefinition[] = [
+  { name: "white", mapColor: "snow", terracottaColor: "terracotta_white" },
+  { name: "orange", mapColor: "color_orange", terracottaColor: "terracotta_orange" },
+  { name: "magenta", mapColor: "color_magenta", terracottaColor: "terracotta_magenta" },
+  { name: "light_blue", mapColor: "color_light_blue", terracottaColor: "terracotta_light_blue" },
+  { name: "yellow", mapColor: "color_yellow", terracottaColor: "terracotta_yellow" },
+  { name: "lime", mapColor: "color_light_green", terracottaColor: "terracotta_light_green" },
+  { name: "pink", mapColor: "color_pink", terracottaColor: "terracotta_pink" },
+  { name: "gray", mapColor: "color_gray", terracottaColor: "terracotta_gray" },
+  { name: "light_gray", mapColor: "color_light_gray", terracottaColor: "terracotta_light_gray" },
+  { name: "cyan", mapColor: "color_cyan", terracottaColor: "terracotta_cyan" },
+  { name: "purple", mapColor: "color_purple", terracottaColor: "terracotta_purple" },
+  { name: "blue", mapColor: "color_blue", terracottaColor: "terracotta_blue" },
+  { name: "brown", mapColor: "color_brown", terracottaColor: "terracotta_brown" },
+  { name: "green", mapColor: "color_green", terracottaColor: "terracotta_green" },
+  { name: "red", mapColor: "color_red", terracottaColor: "terracotta_red" },
+  { name: "black", mapColor: "color_black", terracottaColor: "terracotta_black" },
+];
 
 const DEFAULT_ARMOR_DURABILITY: Record<ArmorTypeKey, number> = {
   helmet: 11,
@@ -69,8 +137,9 @@ export class DecompiledSourceExtractor {
   constructor(private readonly logger: Logger) {}
 
   async extract(clientRoot: string): Promise<SourceDerivedData> {
-    const itemStats = await this.extractItemStats(clientRoot);
-    const blockProperties = await this.extractBlockProperties(clientRoot);
+    const context = await this.loadSourceContext(clientRoot);
+    const itemStats = await this.extractItemStats(clientRoot, context);
+    const blockProperties = await this.extractBlockProperties(clientRoot, context);
 
     return {
       itemStats,
@@ -78,7 +147,21 @@ export class DecompiledSourceExtractor {
     };
   }
 
-  private async extractItemStats(clientRoot: string): Promise<ItemStatDefinition[]> {
+  private async loadSourceContext(clientRoot: string): Promise<SourceContext> {
+    const referenceSources = await Promise.all(
+      REFERENCE_ID_PATHS.map(async (relativePath) => ({
+        className: relativePath.slice(relativePath.lastIndexOf("/") + 1).replace(/\.java$/, ""),
+        source: await this.readOptional(join(clientRoot, relativePath)),
+      })),
+    );
+    const dyeSource = await this.readOptional(join(clientRoot, DYE_COLOR_PATH));
+    const dyeColors = dyeSource ? parseDyeColors(dyeSource) : FALLBACK_DYE_COLORS;
+    const references = buildReferenceIndex(referenceSources, dyeColors);
+
+    return { references, dyeColors };
+  }
+
+  private async extractItemStats(clientRoot: string, context: SourceContext): Promise<ItemStatDefinition[]> {
     const itemsPath = join(clientRoot, ITEMS_PATH);
     if (!(await fileExists(itemsPath))) {
       this.logger.debug(`Skipping item source analysis; ${itemsPath} was not found.`);
@@ -100,12 +183,31 @@ export class DecompiledSourceExtractor {
       ? parseArmorMaterials(armorMaterialsSource)
       : new Map<string, ArmorMaterialStats>();
 
-    return parseStaticDeclarations(itemsSource, "Item")
-      .map((declaration) => toItemStatDefinition(declaration, ITEMS_PATH, foods, toolMaterials, armorMaterials, armorDurability))
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const stats = new Map<string, ItemStatDefinition>();
+    for (const declaration of parseStaticDeclarations(itemsSource, "Item")) {
+      const definition = toItemStatDefinition(
+        declaration,
+        ITEMS_PATH,
+        foods,
+        toolMaterials,
+        armorMaterials,
+        context,
+        armorDurability,
+      );
+      stats.set(definition.id, definition);
+    }
+
+    for (const definition of expandItemCollections(itemsSource, foods, toolMaterials, armorMaterials, context, armorDurability)) {
+      // Single declarations win over collection expansions if they ever collide.
+      if (!stats.has(definition.id)) {
+        stats.set(definition.id, definition);
+      }
+    }
+
+    return Array.from(stats.values()).sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  private async extractBlockProperties(clientRoot: string): Promise<BlockPropertyDefinition[]> {
+  private async extractBlockProperties(clientRoot: string, context: SourceContext): Promise<BlockPropertyDefinition[]> {
     const blocksPath = join(clientRoot, BLOCKS_PATH);
     if (!(await fileExists(blocksPath))) {
       this.logger.debug(`Skipping block source analysis; ${blocksPath} was not found.`);
@@ -114,13 +216,13 @@ export class DecompiledSourceExtractor {
 
     const blocksSource = await readFile(blocksPath, "utf8");
     const methods = parseMethods(blocksSource);
-    const registrationHelpers = new Map<string, string>();
+    const registrationHelpers = new Map<string, RegistrationHelper>();
     const propertyHelpers = new Map<string, string>();
 
     for (const method of methods) {
       const registrationProperties = extractRegisterProperties(method.body);
       if (registrationProperties) {
-        registrationHelpers.set(method.name, registrationProperties);
+        registrationHelpers.set(method.name, { expression: registrationProperties, params: method.params });
       }
 
       const propertyReturn = extractPropertiesReturn(method.body);
@@ -129,9 +231,24 @@ export class DecompiledSourceExtractor {
       }
     }
 
-    return parseStaticDeclarations(blocksSource, "Block")
-      .map((declaration) => toBlockPropertyDefinition(declaration, BLOCKS_PATH, registrationHelpers, propertyHelpers))
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const properties = new Map<string, BlockPropertyDefinition>();
+    for (const declaration of parseStaticDeclarations(blocksSource, "Block")) {
+      const definition = toBlockPropertyDefinition(declaration, BLOCKS_PATH, registrationHelpers, propertyHelpers, context);
+      properties.set(definition.id, definition);
+    }
+
+    for (const definition of expandBlockCollections(blocksSource, propertyHelpers, context)) {
+      // Single declarations win over collection expansions if they ever collide.
+      if (!properties.has(definition.id)) {
+        properties.set(definition.id, definition);
+      }
+    }
+
+    // Blocks declared via ofFullCopy/ofLegacyCopy inherit the source block's physical
+    // properties; fill those in once every block (incl. copy sources) has been parsed.
+    resolveCopyInheritance(properties);
+
+    return Array.from(properties.values()).sort((left, right) => left.id.localeCompare(right.id));
   }
 
   private async readOptional(path: string): Promise<string | undefined> {
@@ -149,25 +266,60 @@ function toItemStatDefinition(
   foods: Map<string, FoodTemplate>,
   toolMaterials: Map<string, ToolMaterialStats>,
   armorMaterials: Map<string, ArmorMaterialStats>,
+  context: SourceContext,
   armorDurability: Record<ArmorTypeKey, number>,
 ): ItemStatDefinition {
   const outerCall = parseTopLevelCall(declaration.expression);
   const registration = outerCall?.name === "registerBlock" ? "block" : "item";
-  const id = normalizeMinecraftId(resolveExplicitId(outerCall?.args[0]) ?? constantToId(declaration.symbol));
+  const id = normalizeMinecraftId(
+    resolveExplicitId(outerCall?.args[0]) ??
+      resolveReferenceId(outerCall?.args[0], "item", context.references) ??
+      constantToId(declaration.symbol),
+  );
   const propertiesExpression = extractItemPropertiesExpression(outerCall);
   const normalizedProperties = propertiesExpression ? collapseWhitespace(propertiesExpression) : "";
-  const tool = resolveItemToolStats(declaration.expression, normalizedProperties, toolMaterials);
-  const armor = resolveItemArmorStats(normalizedProperties, armorMaterials, armorDurability);
-  const explicitDurability = parseLastNumericCall(normalizedProperties, "durability");
-  const stackSizeOverride = parseLastIntegerCall(normalizedProperties, "stacksTo");
-  const inferredDurability = explicitDurability ?? tool?.durability ?? armor?.durability;
-  const food = resolveItemFoodStats(normalizedProperties, foods);
 
-  return {
+  return buildItemStat({
     id,
     sourcePath,
     sourceSymbol: declaration.symbol,
     registration,
+    fullExpression: declaration.expression,
+    normalizedProperties,
+    foods,
+    toolMaterials,
+    armorMaterials,
+    armorDurability,
+  });
+}
+
+interface ItemStatInput {
+  id: string;
+  sourcePath: string;
+  sourceSymbol: string;
+  registration: ItemStatDefinition["registration"];
+  fullExpression: string;
+  normalizedProperties: string;
+  foods: Map<string, FoodTemplate>;
+  toolMaterials: Map<string, ToolMaterialStats>;
+  armorMaterials: Map<string, ArmorMaterialStats>;
+  armorDurability: Record<ArmorTypeKey, number>;
+}
+
+function buildItemStat(input: ItemStatInput): ItemStatDefinition {
+  const { normalizedProperties } = input;
+  const tool = resolveItemToolStats(input.fullExpression, normalizedProperties, input.toolMaterials);
+  const armor = resolveItemArmorStats(normalizedProperties, input.armorMaterials, input.armorDurability);
+  const explicitDurability = parseLastNumericCall(normalizedProperties, "durability");
+  const stackSizeOverride = parseLastIntegerCall(normalizedProperties, "stacksTo");
+  const inferredDurability = explicitDurability ?? tool?.durability ?? armor?.durability;
+  const food = resolveItemFoodStats(normalizedProperties, input.foods);
+
+  return {
+    id: input.id,
+    sourcePath: input.sourcePath,
+    sourceSymbol: input.sourceSymbol,
+    registration: input.registration,
     stackSize: stackSizeOverride ?? (inferredDurability !== undefined ? 1 : 64),
     durability: inferredDurability,
     rarity: parseRarity(normalizedProperties) ?? "common",
@@ -181,15 +333,30 @@ function toItemStatDefinition(
 function toBlockPropertyDefinition(
   declaration: StaticDeclaration,
   sourcePath: string,
-  registrationHelpers: Map<string, string>,
+  registrationHelpers: Map<string, RegistrationHelper>,
   propertyHelpers: Map<string, string>,
+  context: SourceContext,
 ): BlockPropertyDefinition {
   const outerCall = parseTopLevelCall(declaration.expression);
-  const id = normalizeMinecraftId(resolveExplicitId(outerCall?.args[0]) ?? constantToId(declaration.symbol));
+  const id = normalizeMinecraftId(
+    resolveExplicitId(outerCall?.args[0]) ??
+      resolveReferenceId(outerCall?.args[0], "block", context.references) ??
+      constantToId(declaration.symbol),
+  );
   const basePropertiesExpression = resolveBlockPropertiesExpression(declaration.expression, registrationHelpers);
   const normalizedProperties = basePropertiesExpression
     ? expandBlockPropertiesExpression(collapseWhitespace(basePropertiesExpression), propertyHelpers)
     : "";
+
+  return buildBlockProperty(id, declaration.symbol, sourcePath, normalizedProperties);
+}
+
+function buildBlockProperty(
+  id: string,
+  sourceSymbol: string,
+  sourcePath: string,
+  normalizedProperties: string,
+): BlockPropertyDefinition {
   const strengthValues = findLastCallArguments(normalizedProperties, "strength");
   const destroyTimeFromStrength = strengthValues ? parseJavaNumber(strengthValues[0]) : undefined;
   const explosionResistanceFromStrength =
@@ -199,7 +366,7 @@ function toBlockPropertyDefinition(
   return {
     id,
     sourcePath,
-    sourceSymbol: declaration.symbol,
+    sourceSymbol,
     copiedFrom,
     destroyTime: parseLastNumericCall(normalizedProperties, "destroyTime") ?? destroyTimeFromStrength ?? resolveInstabreakDestroyTime(normalizedProperties),
     explosionResistance:
@@ -215,6 +382,536 @@ function toBlockPropertyDefinition(
     pushReaction: normalizeReferenceValue(findLastCallArguments(normalizedProperties, "pushReaction")?.[0]),
     lightEmission: resolveLightEmission(normalizedProperties),
   };
+}
+
+// `BlockBehaviour.Properties.of{Full,Legacy}Copy(SOURCE)` clones the source block's
+// physical properties and the registration may then override individual fields. The
+// per-block parser records `copiedFrom` and whatever fields the block sets explicitly;
+// this pass fills the remaining fields from the (recursively resolved) source block so
+// copy-based blocks (slabs, stairs, walls, cut copper, candle cakes, ...) report the same
+// destroyTime/explosionResistance/sound/tool requirements as the block they copy.
+function resolveCopyInheritance(properties: Map<string, BlockPropertyDefinition>): void {
+  const resolved = new Set<string>();
+  const resolving = new Set<string>();
+
+  const resolve = (definition: BlockPropertyDefinition): void => {
+    if (resolved.has(definition.id) || resolving.has(definition.id)) {
+      return;
+    }
+
+    resolving.add(definition.id);
+    const source = definition.copiedFrom ? properties.get(definition.copiedFrom) : undefined;
+    if (source && source.id !== definition.id) {
+      resolve(source);
+      inheritBlockProperties(definition, source);
+    }
+
+    resolving.delete(definition.id);
+    resolved.add(definition.id);
+  };
+
+  for (const definition of properties.values()) {
+    resolve(definition);
+  }
+}
+
+function inheritBlockProperties(target: BlockPropertyDefinition, source: BlockPropertyDefinition): void {
+  // Optional fields: an explicit override on the block wins, otherwise inherit the source.
+  target.destroyTime ??= source.destroyTime;
+  target.explosionResistance ??= source.explosionResistance;
+  target.mapColor ??= source.mapColor;
+  target.instrument ??= source.instrument;
+  target.soundType ??= source.soundType;
+  target.pushReaction ??= source.pushReaction;
+  target.lightEmission ??= source.lightEmission;
+  // Boolean flags can only be turned on in the chain (there is no `.flag(false)`), so a
+  // false on the block means "not set here" and should inherit the copied value.
+  target.requiresCorrectToolForDrops ||= source.requiresCorrectToolForDrops;
+  target.ignitedByLava ||= source.ignitedByLava;
+  target.randomTicks ||= source.randomTicks;
+  target.noCollision ||= source.noCollision;
+  target.replaceable ||= source.replaceable;
+}
+
+// --- 26.2 reference-id and collection support -------------------------------
+//
+// Minecraft 26.2 reorganized how blocks/items are registered: ids moved from inline
+// string literals to `BlockItemIds.X` / `BlockIds.X` / `ItemIds.X` references, and the
+// 16-color and weathering-copper variant families are now registered through
+// ColorCollection / WeatheringCopperCollection factories instead of one explicit
+// declaration each. The helpers below recover those families while leaving the
+// string-literal path used by older versions untouched.
+
+function buildReferenceIndex(
+  sources: Array<{ className: string; source: string | undefined }>,
+  dyeColors: DyeColorDefinition[],
+): ReferenceIndex {
+  const index: ReferenceIndex = { singles: new Map(), collections: new Map() };
+  const byStateConstants = new Map<string, string[]>();
+
+  // ByState constants (e.g. COPPER_BLOCK_SPECIAL_NAMES) drive the irregular copper ids.
+  const byStatePattern =
+    /(?:public|private) static final WeatheringCopperCollection\.ByState<String>\s+([A-Z0-9_]+)\s*=\s*new WeatheringCopperCollection\.ByState<>\(([^)]*)\)/g;
+  for (const { source } of sources) {
+    if (!source) {
+      continue;
+    }
+
+    for (const match of source.matchAll(byStatePattern)) {
+      const name = match[1];
+      const strings = parseStringLiterals(match[2] ?? "");
+      if (name && strings.length >= 4) {
+        byStateConstants.set(name, strings);
+      }
+    }
+  }
+
+  for (const { className, source } of sources) {
+    if (!source) {
+      continue;
+    }
+
+    for (const declaration of parseReferenceDeclarations(source)) {
+      const collectionIds = resolveReferenceCollectionExpression(declaration.expression, byStateConstants, dyeColors);
+      if (collectionIds && collectionIds.length > 0) {
+        index.collections.set(`${className}.${declaration.symbol}`, collectionIds);
+        continue;
+      }
+
+      const single = resolveReferenceSingleExpression(declaration.expression, className);
+      if (single) {
+        index.singles.set(`${className}.${declaration.symbol}`, single);
+      }
+    }
+  }
+
+  return index;
+}
+
+function parseReferenceDeclarations(source: string): StaticDeclaration[] {
+  const declarations: StaticDeclaration[] = [];
+  const pattern = /public static final [^=;]+?\b([A-Z][A-Z0-9_]*)\s*=\s*/g;
+
+  for (const match of source.matchAll(pattern)) {
+    const symbol = match[1];
+    const start = (match.index ?? 0) + match[0].length;
+    const end = findStatementEnd(source, start);
+    if (!symbol || end < 0) {
+      continue;
+    }
+
+    declarations.push({ symbol, expression: collapseWhitespace(source.slice(start, end)) });
+  }
+
+  return declarations;
+}
+
+function resolveReferenceCollectionExpression(
+  expression: string,
+  byStateConstants: Map<string, string[]>,
+  dyeColors: DyeColorDefinition[],
+): string[] | undefined {
+  const colorMatch =
+    expression.match(/createSimpleColored\(\s*"([^"]+)"/) ??
+    expression.match(/prefixWithColor\(\s*ColorCollection\.create\(\s*"([^"]+)"/);
+  if (colorMatch?.[1]) {
+    return colorIdExpand(colorMatch[1], dyeColors);
+  }
+
+  const copperMatch =
+    expression.match(/createSimpleCopper\(\s*"([^"]+)"/) ??
+    expression.match(/prefixWithState\(\s*WeatheringCopperCollection\.create\(\s*"([^"]+)"/);
+  if (copperMatch?.[1]) {
+    return copperIdExpand([copperMatch[1], copperMatch[1], copperMatch[1], copperMatch[1]]);
+  }
+
+  if (expression.includes("prefixWithState")) {
+    const sameMatch = expression.match(/\.same\(\s*([A-Z0-9_]+)\s*\)/);
+    const byState = sameMatch?.[1] ? byStateConstants.get(sameMatch[1]) : undefined;
+    if (byState && byState.length >= 4) {
+      return copperIdExpand(byState);
+    }
+  }
+
+  return undefined;
+}
+
+function resolveReferenceSingleExpression(expression: string, className: string): ReferenceId | undefined {
+  const blockItemMatch = expression.match(/BlockItemId\.create\(\s*"([^"]+)"(?:\s*,\s*"([^"]+)")?/);
+  if (blockItemMatch?.[1]) {
+    return { block: blockItemMatch[1], item: blockItemMatch[2] ?? blockItemMatch[1] };
+  }
+
+  const createMatch = expression.match(/\bcreate\(\s*"([^"]+)"/);
+  if (createMatch?.[1]) {
+    return className === "ItemIds" ? { item: createMatch[1] } : { block: createMatch[1] };
+  }
+
+  return undefined;
+}
+
+function resolveReferenceId(
+  expression: string | undefined,
+  kind: "block" | "item",
+  references: ReferenceIndex,
+): string | undefined {
+  if (!expression) {
+    return undefined;
+  }
+
+  const normalized = collapseWhitespace(expression);
+  let effectiveKind = kind;
+  if (/\.item\(\)\s*$/.test(normalized)) {
+    effectiveKind = "item";
+  } else if (/\.block\(\)\s*$/.test(normalized)) {
+    effectiveKind = "block";
+  }
+
+  const match = normalized.match(/\b(BlockItemIds|BlockIds|ItemIds)\.([A-Z][A-Z0-9_]*)/);
+  if (!match) {
+    return undefined;
+  }
+
+  const entry = references.singles.get(`${match[1]}.${match[2]}`);
+  if (!entry) {
+    return undefined;
+  }
+
+  return effectiveKind === "item" ? entry.item ?? entry.block : entry.block ?? entry.item;
+}
+
+function resolveReferenceCollectionIds(expression: string | undefined, references: ReferenceIndex): string[] | undefined {
+  if (!expression) {
+    return undefined;
+  }
+
+  const match = collapseWhitespace(expression).match(/\b(BlockItemIds|BlockIds|ItemIds)\.([A-Z][A-Z0-9_]*)/);
+  if (!match) {
+    return undefined;
+  }
+
+  return references.collections.get(`${match[1]}.${match[2]}`);
+}
+
+function colorIdExpand(base: string, dyeColors: DyeColorDefinition[]): string[] {
+  return dyeColors.map((color) => `${color.name}_${base}`);
+}
+
+function copperIdExpand(byState: string[]): string[] {
+  const ids: string[] = [];
+  for (const prefixes of [COPPER_WEATHERING_PREFIXES, COPPER_WAXED_PREFIXES]) {
+    prefixes.forEach((prefix, index) => {
+      const base = byState[index] ?? byState[0] ?? "";
+      ids.push(`${prefix}${base}`);
+    });
+  }
+
+  return ids;
+}
+
+function expandBlockCollections(
+  blocksSource: string,
+  propertyHelpers: Map<string, string>,
+  context: SourceContext,
+): BlockPropertyDefinition[] {
+  const declarations = [
+    ...parseAssignments(blocksSource, "public static final ColorCollection<Block>"),
+    ...parseAssignments(blocksSource, "public static final WeatheringCopperCollection<Block>"),
+  ];
+
+  // First pass: map each collection's Java symbol to its expanded id list. Some copper
+  // families copy their properties from another collection (e.g. cut_copper from
+  // copper_block) via `ofFullCopy(COPPER_BLOCK.weathering().pick(state))`, so the second
+  // pass needs every collection's ids available regardless of declaration order.
+  const collections = new Map<string, { call: ParsedCall; ids: string[]; isColor: boolean }>();
+  for (const declaration of declarations) {
+    const call = parseTopLevelCall(declaration.expression);
+    if (!call || !call.name.endsWith(".registerBlocks")) {
+      continue;
+    }
+
+    const ids = resolveReferenceCollectionIds(call.args[0], context.references);
+    if (!ids || ids.length === 0) {
+      continue;
+    }
+
+    collections.set(declaration.symbol, { call, ids, isColor: call.name.startsWith("ColorCollection") });
+  }
+
+  const collectionIdsBySymbol = new Map(Array.from(collections, ([symbol, entry]) => [symbol, entry.ids]));
+  // Weathering-copper "full" families (copper_block) carry per-state map colors via a
+  // `switch (state)` expression; the door/grate/bulb/chest/... families reference them
+  // through `COPPER_BLOCK.weathering().pick(state).defaultMapColor()`. Resolve the source
+  // map colors once so those references can be substituted per variant.
+  const copperMapColorsBySymbol = computeCopperMapColors(collections);
+  const definitions: BlockPropertyDefinition[] = [];
+
+  for (const { call, ids, isColor } of collections.values()) {
+    const propertiesLambda = call.args.at(-1);
+    if (!propertiesLambda) {
+      continue;
+    }
+
+    const lambdaBody = stripLambdaParameter(propertiesLambda);
+    ids.forEach((id, index) => {
+      const propertiesExpression = isColor
+        ? substituteDyeColor(lambdaBody, context.dyeColors[index])
+        : substituteWeatherState(lambdaBody, index % WEATHER_STATES.length, copperMapColorsBySymbol);
+      const normalizedProperties = expandBlockPropertiesExpression(collapseWhitespace(propertiesExpression), propertyHelpers);
+      const definition = buildBlockProperty(normalizeMinecraftId(id), symbolFromId(id), BLOCKS_PATH, normalizedProperties);
+      if (!definition.copiedFrom) {
+        definition.copiedFrom = resolveCollectionCopiedFrom(lambdaBody, index, collectionIdsBySymbol);
+      }
+
+      definitions.push(definition);
+    });
+  }
+
+  return definitions;
+}
+
+// Resolves each weathering-copper collection whose map color is an inline `switch (state)`
+// (in practice copper_block) to its four MapColor literals, one per weather state.
+function computeCopperMapColors(
+  collections: Map<string, { call: ParsedCall; ids: string[]; isColor: boolean }>,
+): Map<string, string[]> {
+  const mapColorsBySymbol = new Map<string, string[]>();
+
+  for (const [symbol, { call, isColor }] of collections) {
+    const propertiesLambda = call.args.at(-1);
+    if (isColor || !propertiesLambda) {
+      continue;
+    }
+
+    const lambdaBody = stripLambdaParameter(propertiesLambda);
+    const literals: string[] = [];
+    for (const state of WEATHER_STATES) {
+      const resolved = inlineLocalVariables(replaceWeatherSwitches(lambdaBody, state));
+      const mapColor = findLastCallArguments(resolved, "mapColor")?.[0]?.trim();
+      if (mapColor && /^MapColor\.[A-Z0-9_]+$/.test(mapColor)) {
+        literals.push(mapColor);
+      }
+    }
+
+    if (literals.length === WEATHER_STATES.length) {
+      mapColorsBySymbol.set(symbol, literals);
+    }
+  }
+
+  return mapColorsBySymbol;
+}
+
+// Specializes a weathering-copper property lambda to a single weather state: replaces
+// `switch (state) { ... }` branches (map color, instrument, light level), inlines the
+// decompiler temporaries they are assigned to, and resolves
+// `COLLECTION.weathering()/.waxed().pick(state).defaultMapColor()` to the source family's
+// per-state map color literal.
+function substituteWeatherState(
+  lambdaBody: string,
+  stateIndex: number,
+  copperMapColorsBySymbol: Map<string, string[]>,
+): string {
+  let result = inlineLocalVariables(replaceWeatherSwitches(lambdaBody, WEATHER_STATES[stateIndex] ?? "UNAFFECTED"));
+  result = result.replace(
+    /[A-Za-z0-9_]+\s*->\s*([A-Z0-9_]+)\.(?:weathering|waxed)\(\)\.pick\([^)]*\)\.defaultMapColor\(\)/g,
+    (match, symbol: string) => copperMapColorsBySymbol.get(symbol)?.[stateIndex] ?? match,
+  );
+  return result;
+}
+
+function replaceWeatherSwitches(body: string, stateLabel: string): string {
+  let result = body;
+  let searchFrom = 0;
+  let guard = 0;
+
+  while (guard++ < 20) {
+    const switchIndex = result.indexOf("switch", searchFrom);
+    if (switchIndex < 0) {
+      break;
+    }
+
+    const parenOpen = result.indexOf("(", switchIndex);
+    const parenClose = parenOpen >= 0 ? findMatchingParen(result, parenOpen) : -1;
+    const braceOpen = parenClose >= 0 ? result.indexOf("{", parenClose) : -1;
+    const braceClose = braceOpen >= 0 ? findMatchingBrace(result, braceOpen) : -1;
+    if (braceClose < 0) {
+      searchFrom = switchIndex + "switch".length;
+      continue;
+    }
+
+    const switchBody = result.slice(braceOpen + 1, braceClose);
+    if (!switchBody.includes("UNAFFECTED")) {
+      // Not a weather-state switch; leave it untouched.
+      searchFrom = braceClose + 1;
+      continue;
+    }
+
+    const caseMatch = switchBody.match(new RegExp(`case\\s+${stateLabel}\\s*->\\s*([^;]+)`));
+    const value = caseMatch?.[1]?.trim() ?? "";
+    result = result.slice(0, switchIndex) + value + result.slice(braceClose + 1);
+    searchFrom = switchIndex + value.length;
+  }
+
+  return result;
+}
+
+function inlineLocalVariables(body: string): string {
+  const assignments = new Map<string, string>();
+  const pattern = /\b[A-Z][\w.]*\s+(var\w+)\s*=\s*([^;]+);/g;
+  for (const match of body.matchAll(pattern)) {
+    if (match[1] && match[2]) {
+      assignments.set(match[1], match[2].trim());
+    }
+  }
+
+  if (assignments.size === 0) {
+    return body;
+  }
+
+  let result = body;
+  for (const [name, value] of assignments) {
+    result = result.replace(new RegExp(`\\b${name}\\b`, "g"), value);
+  }
+
+  return result;
+}
+
+// Resolves `of{Full,Legacy}Copy(COLLECTION.weathering()/.waxed().pick(state))` to the
+// concrete id the variant copies from, mirroring how 26.1.1 recorded copiedFrom for the
+// per-state copper families (e.g. waxed_oxidized_cut_copper -> oxidized_copper).
+function resolveCollectionCopiedFrom(
+  lambdaBody: string,
+  variantIndex: number,
+  collectionIdsBySymbol: Map<string, string[]>,
+): string | undefined {
+  const match = lambdaBody.match(/of(?:Full|Legacy)Copy\(\s*([A-Z0-9_]+)\.(weathering|waxed)\(\)\.pick\(/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const ids = collectionIdsBySymbol.get(match[1]);
+  if (!ids) {
+    return undefined;
+  }
+
+  const stateCount = COPPER_WEATHERING_PREFIXES.length;
+  const offset = match[2] === "waxed" ? stateCount : 0;
+  const picked = ids[offset + (variantIndex % stateCount)];
+  return picked ? normalizeMinecraftId(picked) : undefined;
+}
+
+function expandItemCollections(
+  itemsSource: string,
+  foods: Map<string, FoodTemplate>,
+  toolMaterials: Map<string, ToolMaterialStats>,
+  armorMaterials: Map<string, ArmorMaterialStats>,
+  context: SourceContext,
+  armorDurability: Record<ArmorTypeKey, number>,
+): ItemStatDefinition[] {
+  const declarations = [
+    ...parseAssignments(itemsSource, "public static final ColorCollection<Item>"),
+    ...parseAssignments(itemsSource, "public static final WeatheringCopperCollection<Item>"),
+  ];
+  const definitions: ItemStatDefinition[] = [];
+
+  for (const declaration of declarations) {
+    const call = parseTopLevelCall(declaration.expression);
+    if (!call) {
+      continue;
+    }
+
+    const method = call.name.split(".").at(-1) ?? "";
+    if (method !== "registerBlockItems" && method !== "registerItems") {
+      continue;
+    }
+
+    const ids = resolveReferenceCollectionIds(call.args[0], context.references);
+    if (!ids || ids.length === 0) {
+      continue;
+    }
+
+    const factory = call.args.at(-1) ?? "";
+    const normalizedProperties = extractCollectionItemProperties(factory);
+    // registerBlockItems and WeatheringCopperCollection.registerItems(ids, blocks, factory)
+    // both produce block items; ColorCollection.registerItems(ids, factory) produces items.
+    const registration: ItemStatDefinition["registration"] =
+      method === "registerBlockItems" || call.args.length >= 3 ? "block" : "item";
+
+    for (const id of ids) {
+      definitions.push(
+        buildItemStat({
+          id: normalizeMinecraftId(id),
+          sourcePath: ITEMS_PATH,
+          sourceSymbol: symbolFromId(id),
+          registration,
+          fullExpression: factory,
+          normalizedProperties,
+          foods,
+          toolMaterials,
+          armorMaterials,
+          armorDurability,
+        }),
+      );
+    }
+  }
+
+  return definitions;
+}
+
+function extractCollectionItemProperties(factory: string): string {
+  const normalized = collapseWhitespace(factory);
+  for (const callName of ["registerBlock", "registerItem"]) {
+    const argumentsList = findLastCallArguments(normalized, callName);
+    const propertiesArgument = argumentsList?.find((argument) => argument.includes("Item.Properties"));
+    if (propertiesArgument) {
+      return collapseWhitespace(propertiesArgument);
+    }
+  }
+
+  return "";
+}
+
+function stripLambdaParameter(expression: string): string {
+  const normalized = collapseWhitespace(expression);
+  const match = normalized.match(/^(?:\([^)]*\)|[A-Za-z0-9_]+)\s*->\s*([\s\S]+)$/);
+  return match?.[1] ?? normalized;
+}
+
+function substituteDyeColor(expression: string, color: DyeColorDefinition | undefined): string {
+  if (!color) {
+    return expression;
+  }
+
+  return expression
+    .replace(/color\.getMapColor\(\)/g, `MapColor.${color.mapColor.toUpperCase()}`)
+    .replace(/color\.getTerracottaColor\(\)/g, `MapColor.${color.terracottaColor.toUpperCase()}`);
+}
+
+function symbolFromId(id: string): string {
+  return id.toUpperCase();
+}
+
+function parseDyeColors(source: string): DyeColorDefinition[] {
+  const colors: DyeColorDefinition[] = [];
+  // WHITE(0, "white", 16383998, MapColor.SNOW, MapColor.TERRACOTTA_WHITE, ...)
+  const pattern =
+    /^\s*[A-Z][A-Z0-9_]*\(\s*\d+\s*,\s*"([^"]+)"\s*,\s*-?\d+\s*,\s*MapColor\.([A-Z0-9_]+)\s*,\s*MapColor\.([A-Z0-9_]+)/gm;
+
+  for (const match of source.matchAll(pattern)) {
+    if (match[1] && match[2] && match[3]) {
+      colors.push({
+        name: match[1],
+        mapColor: constantToId(match[2]),
+        terracottaColor: constantToId(match[3]),
+      });
+    }
+  }
+
+  return colors.length === FALLBACK_DYE_COLORS.length ? colors : FALLBACK_DYE_COLORS;
+}
+
+function parseStringLiterals(value: string): string[] {
+  return Array.from(value.matchAll(/"([^"]*)"/g), (match) => match[1] ?? "");
 }
 
 function resolveItemToolStats(
@@ -409,7 +1106,10 @@ function resolveItemFoodStats(
   };
 }
 
-function resolveBlockPropertiesExpression(expression: string, registrationHelpers: Map<string, string>): string | undefined {
+function resolveBlockPropertiesExpression(
+  expression: string,
+  registrationHelpers: Map<string, RegistrationHelper>,
+): string | undefined {
   const call = parseTopLevelCall(expression);
   if (!call) {
     return undefined;
@@ -419,7 +1119,27 @@ function resolveBlockPropertiesExpression(expression: string, registrationHelper
     return call.args.at(-1);
   }
 
-  return registrationHelpers.get(call.name);
+  const helper = registrationHelpers.get(call.name);
+  if (!helper) {
+    return undefined;
+  }
+
+  // Substitute the helper's parameters with the call's arguments so copy sources passed
+  // positionally (e.g. registerSlab(id, ACACIA_PLANKS) -> ofLegacyCopy(base)) resolve to
+  // the real block rather than the literal parameter name.
+  return substituteHelperParameters(helper.expression, helper.params, call.args);
+}
+
+function substituteHelperParameters(expression: string, params: string[], args: string[]): string {
+  let result = expression;
+  params.forEach((param, index) => {
+    const argument = args[index];
+    if (param && argument) {
+      result = result.replace(new RegExp(`\\b${escapeRegExp(param)}\\b`, "g"), argument);
+    }
+  });
+
+  return result;
 }
 
 function expandBlockPropertiesExpression(expression: string, propertyHelpers: Map<string, string>, depth = 0): string {
@@ -697,7 +1417,7 @@ function extractPropertiesReturn(body: string): string | undefined {
 
 function parseMethods(source: string): MethodDeclaration[] {
   const methods: MethodDeclaration[] = [];
-  const pattern = /private static [^{]+ (\w+)\([^)]*\)\s*\{/g;
+  const pattern = /private static [^{]+ (\w+)\(([^)]*)\)\s*\{/g;
 
   for (const match of source.matchAll(pattern)) {
     const name = match[1];
@@ -713,11 +1433,16 @@ function parseMethods(source: string): MethodDeclaration[] {
 
     methods.push({
       name,
+      params: parseParameterNames(match[2] ?? ""),
       body: source.slice(openBraceIndex + 1, closeBraceIndex).trim(),
     });
   }
 
   return methods;
+}
+
+function parseParameterNames(parameterList: string): string[] {
+  return splitTopLevelArgs(parameterList).map((parameter) => parameter.trim().match(/(\w+)\s*$/)?.[1] ?? "");
 }
 
 function parseStaticDeclarations(source: string, typeName: string): StaticDeclaration[] {
@@ -1139,7 +1864,15 @@ function normalizeReferenceValue(value: string | undefined): string | undefined 
     return undefined;
   }
 
-  return constantToId(identifierMatch[1] ?? "");
+  const identifier = constantToId(identifierMatch[1] ?? "");
+  // Statement-body lambdas (e.g. the per-state copper switch) reference decompiler
+  // temporaries like `var10001`/`var1x` instead of a concrete constant; treat those as
+  // unresolved rather than leaking the synthetic name as a value.
+  if (/^var\d/.test(identifier)) {
+    return undefined;
+  }
+
+  return identifier;
 }
 
 function constantToId(value: string): string {
