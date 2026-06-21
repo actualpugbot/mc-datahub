@@ -36,7 +36,8 @@
     "lint": "eslint .",
     "format": "prettier --write \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
     "format:check": "prettier --check \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
-    "dev:cli": "tsx src/cli.ts"
+    "dev:cli": "tsx src/cli.ts",
+    "build:pages": "node scripts/build-pages-assets.mjs"
   },
   "dependencies": {
     "cheerio": "1.0.0",

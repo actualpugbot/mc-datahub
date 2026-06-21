@@ -1,0 +1,122 @@
+{
+  "versionPresets": [
+    {
+      "id": "1.21.11+",
+      "label": "Java 1.21.11+",
+      "packFormat": 75,
+      "supportedFormats": {
+        "min": 34,
+        "max": 75
+      }
+    }
+  ],
+  "mobSets": {
+    "basic": {
+      "label": "Starter (10 mobs)",
+      "mobs": [
+        {
+          "id": "zombie",
+          "mob": "Zombie",
+          "image": "public/assets/mobs/zombie.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.zombie.ambient"
+          ]
+        },
+        {
+          "id": "villager",
+          "mob": "Villager",
+          "image": "public/assets/mobs/villager.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.villager.ambient"
+          ]
+        },
+        {
+          "id": "spider",
+          "mob": "Spider",
+          "image": "public/assets/mobs/spider.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.spider.ambient"
+          ]
+        },
+        {
+          "id": "cow",
+          "mob": "Cow",
+          "image": "public/assets/mobs/cow.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.cow.ambient"
+          ]
+        },
+        {
+          "id": "creeper",
+          "mob": "Creeper",
+          "image": "public/assets/mobs/creeper.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.creeper.ambient",
+            "entity.creeper.primed",
+            "entity.creeper.hurt"
+          ]
+        },
+        {
+          "id": "pig",
+          "mob": "Pig",
+          "image": "public/assets/mobs/pig.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.pig.ambient"
+          ]
+        },
+        {
+          "id": "sheep",
+          "mob": "Sheep",
+          "image": "public/assets/mobs/sheep.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.sheep.ambient"
+          ]
+        },
+        {
+          "id": "ghast",
+          "mob": "Ghast",
+          "image": "public/assets/mobs/ghast.gif",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.ghast.ambient"
+          ]
+        },
+        {
+          "id": "chicken",
+          "mob": "Chicken",
+          "image": "public/assets/mobs/chicken.gif",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.chicken.ambient"
+          ]
+        },
+        {
+          "id": "cat",
+          "mob": "Cat",
+          "image": "public/assets/mobs/cat.png",
+          "lengthHintMs": 1000,
+          "styleHints": [],
+          "soundEventKeys": [
+            "entity.cat.ambient"
+          ]
+        }
+      ]
+    }
+  }
+}
