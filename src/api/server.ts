@@ -277,6 +277,17 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
       };
     case "palettes":
       return { responseKey: "palettes", entries: filterPalettes(dataset.palettes, id, query) };
+    case "biomes":
+      return {
+        responseKey: "biomes",
+        entries: filterById(dataset.biomes, id, query, (entry) => [
+          entry.id,
+          entry.key,
+          entry.name,
+          entry.category,
+          entry.dimension,
+        ]),
+      };
     case "mob-images":
       return { responseKey: "mobImages", entries: filterMobImages(dataset.mobImages, id, query) };
     case "mob-sounds":
@@ -306,6 +317,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       advancements: dataset.advancements.length,
       translations: dataset.translations.length,
       palettes: dataset.palettes.length,
+      biomes: dataset.biomes.length,
       mobImages: dataset.mobImages.length,
       mobSounds: dataset.mobSounds.length,
     },
@@ -338,6 +350,7 @@ function summarizeDiff(diff: ReturnType<DiffEngine["compare"]>): Record<string, 
       advancements: summarize(diff.advancements),
       translations: summarize(diff.translations),
       palettes: summarize(diff.palettes),
+      biomes: summarize(diff.biomes),
       mobImages: summarize(diff.mobImages),
       mobSounds: summarize(diff.mobSounds),
     },

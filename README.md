@@ -68,6 +68,17 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `loot-tables.json`: loot tables with derived item drops and the loot functions they use
 - `advancements.json`: advancement tree with parent, display keys, icon, criteria, and rewards
 - `translations.json`: `en_us` language entries (display names) as `{ key, value }` pairs
+- `biomes.json`: biome ids, display names, dimension/category, visual effects, tags, raw worldgen JSON, and placement metadata for surface/cave/special filtering
+
+### Biome Consumer Contract
+
+`biomes.json` includes every vanilla `data/minecraft/worldgen/biome/*.json` entry, including vertical and special biomes such as `deep_dark`, `dripstone_caves`, `lush_caves`, `sulfur_caves`, and `the_void`. Consumers should not hardcode those names to decide rendering behavior; use the normalized placement fields instead.
+
+- `surfaceMap: true` marks biomes suitable for a surface-only X/Z overworld biome map.
+- `placement: "underground"`, `requiresY: true`, or `vertical: true` marks cave biomes that require X/Y/Z sampling. `yRange`, when present, is the broad source-derived dimension build envelope, not a precise climate threshold.
+- `surfaceClimate: false` marks biomes that should not be emitted by normal surface climate lookup, including cave and special biomes.
+- `placement: "special"` and `searchable: false` marks registry/special biomes such as `the_void` that should stay out of normal map/search lists unless a UI has an explicit hidden/special mode.
+- `placement: "nether"` and `placement: "end"` separate non-overworld dimension biomes from overworld surface and cave flows.
 
 For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection.
 

@@ -285,6 +285,7 @@ function createDataset(version: string, mobSounds: MobSoundDefinition[]): Versio
     lootTables: [],
     advancements: [],
     translations: [],
+    biomes: [],
     mobImages: [],
     mobSounds,
   };
@@ -348,6 +349,7 @@ function createRichDataset(version: string, enchantmentIds: string[]): VersionDa
     lootTables: [],
     advancements: [],
     translations: [{ key: "block.minecraft.stone", value: "Stone" }],
+    biomes: [],
     mobImages: [],
     mobSounds: [],
   };

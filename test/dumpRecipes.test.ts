@@ -94,6 +94,7 @@ function createDataset(version: string): VersionDataset {
     lootTables: [],
     advancements: [],
     translations: [],
+    biomes: [],
     mobImages: [],
     mobSounds: [],
   };

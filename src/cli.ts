@@ -5,8 +5,9 @@ import { Command } from "commander";
 import { ZipArchiveSource } from "./archive/zipArchiveSource.js";
 import { buildApiServer } from "./api/server.js";
 import { fileExists, readJsonFile, writeJsonFile } from "./core/fs.js";
-import { versionDownloadsDir } from "./core/paths.js";
+import { datasetVersionDir, versionDownloadsDir } from "./core/paths.js";
 import type { VersionDataset, VersionMetadata } from "./domain/types.js";
+import { buildBanners } from "./extraction/banners.js";
 import { createDefaultContext } from "./index.js";
 
 const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> = {
@@ -23,10 +24,13 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   advancements: (dataset) => dataset.advancements,
   translations: (dataset) => dataset.translations,
   palettes: (dataset) => dataset.palettes,
+  biomes: (dataset) => dataset.biomes,
+  banners: (dataset) => dataset.banners ?? { patterns: [], colors: [] },
   "mob-images": (dataset) => dataset.mobImages,
   "mob-sounds": (dataset) => dataset.mobSounds,
   dataset: (dataset) => dataset,
 };
+import { dumpBanners } from "./orchestrators/dumpBanners.js";
 import { buildMobAudioDumpPayload, dumpMobAudioFiles } from "./orchestrators/dumpMobAudio.js";
 import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
 
@@ -149,6 +153,7 @@ async function main(): Promise<void> {
               lootTables: summarizeCollection(diff.lootTables),
               advancements: summarizeCollection(diff.advancements),
               translations: summarizeCollection(diff.translations),
+              biomes: summarizeCollection(diff.biomes),
               mobImages: summarizeCollection(diff.mobImages),
               mobSounds: summarizeCollection(diff.mobSounds),
             },
@@ -322,6 +327,36 @@ async function main(): Promise<void> {
         ? resolve(process.cwd(), options.output)
         : join(context.config.workspace.datasetsDir, payload.version, "mob-audio");
       const result = await dumpMobAudioFiles(payload, outputDirectory, context.http);
+      console.log(JSON.stringify(result, null, 2));
+    });
+
+  dumpCommand
+    .command("banners")
+    .argument("<version>", "Minecraft version id with a processed dataset")
+    .option("--output <path>", "Write banners.json + textures/ to a directory instead of stdout JSON")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const dataset = await context.datasetStore.loadDataset(version);
+      // Prefer the stored banner dataset; fall back to deriving it from the
+      // dataset's translations + textures so the command also works on datasets
+      // processed before banner extraction existed.
+      const banners =
+        dataset.banners && dataset.banners.patterns.length > 0
+          ? dataset.banners
+          : buildBanners(
+              dataset.translations,
+              dataset.textures.map((texture) => texture.sourcePath),
+            );
+      const payload = { version: dataset.version, generatedAt: dataset.generatedAt, banners };
+
+      if (!options.output) {
+        console.log(JSON.stringify(payload, null, 2));
+        return;
+      }
+
+      const outputDirectory = resolve(process.cwd(), options.output);
+      const bannerImagesDir = join(datasetVersionDir(context.config.workspace, version), "images", "entity", "banner");
+      const result = await dumpBanners(payload, bannerImagesDir, outputDirectory);
       console.log(JSON.stringify(result, null, 2));
     });
 

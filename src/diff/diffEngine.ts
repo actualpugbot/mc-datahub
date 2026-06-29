@@ -1,6 +1,7 @@
 import { stableJsonHash } from "../core/hash.js";
 import type {
   AdvancementDefinition,
+  BiomeDefinition,
   BlockPropertyDefinition,
   BlockDefinition,
   CollectionChange,
@@ -44,6 +45,7 @@ export class DiffEngine {
       lootTables: this.diffCollection<LootTableDefinition>(from.lootTables, to.lootTables),
       advancements: this.diffCollection<AdvancementDefinition>(from.advancements, to.advancements),
       translations: this.diffCollection<TranslationEntry>(from.translations, to.translations, (entry) => entry.key),
+      biomes: this.diffCollection<BiomeDefinition>(from.biomes, to.biomes),
       mobImages: this.diffCollection<MobImageDefinition>(from.mobImages, to.mobImages),
       mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
     };

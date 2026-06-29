@@ -399,6 +399,104 @@ export interface TranslationEntry {
   value: string;
 }
 
+/** Hex colors a biome publishes through its client-side visual effects. */
+export interface BiomeEffectColors {
+  waterColor?: string;
+  waterFogColor?: string;
+  fogColor?: string;
+  skyColor?: string;
+  grassColor?: string;
+  foliageColor?: string;
+}
+
+export type BiomePlacement = "surface" | "underground" | "special" | "nether" | "end";
+
+export interface BiomeYRange {
+  /** Inclusive minimum build Y from the source dimension type. */
+  min: number;
+  /** Inclusive maximum build Y from the source dimension type. */
+  max: number;
+  /** Source JSON used to derive this broad dimension envelope. */
+  sourcePath: string;
+}
+
+export interface BiomeDefinition {
+  /** Namespaced id, e.g. `minecraft:plains`. */
+  id: string;
+  /** Bare key, e.g. `plains`. */
+  key: string;
+  /** Localized display name from `en_us` (falls back to a humanized key). */
+  name: string;
+  /** Dimension the biome generates in, derived from worldgen biome tags. */
+  dimension: "overworld" | "nether" | "end" | "unknown";
+  /** Coarse grouping (ocean, river, forest, mountain, …) for legends/filters. */
+  category: string;
+  /** Stable consumer-facing placement bucket for map/search UIs. */
+  placement: BiomePlacement;
+  /** True when correct lookup requires an X/Y/Z sample rather than X/Z only. */
+  requiresY: boolean;
+  /** Alias for requiresY kept explicit for non-TypeScript consumers. */
+  vertical: boolean;
+  /** Broad source-derived Y envelope when the biome is vertical. */
+  yRange?: BiomeYRange;
+  /** True when the biome belongs to normal overworld surface climate lookup. */
+  surfaceClimate: boolean;
+  /** True when a surface-only 2D X/Z biome map should emit this biome. */
+  surfaceMap: boolean;
+  /** False for registry/special biomes that should be hidden from normal biome search. */
+  searchable: boolean;
+  temperature: number;
+  downfall?: number;
+  hasPrecipitation: boolean;
+  effects: BiomeEffectColors;
+  /** `worldgen/biome` tag ids this biome belongs to (e.g. `minecraft:is_forest`). */
+  tags: string[];
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+/** A dye color as it applies to banners (base color + pattern tint). */
+export interface BannerColorDefinition {
+  /** Bare dye id, e.g. `light_blue`. */
+  id: string;
+  /** Localized display name from `color.minecraft.<id>` (e.g. "Light Blue"). */
+  label: string;
+  /** `DyeColor.getTextureDiffuseColor()` split into 8-bit channels. */
+  rgb: [number, number, number];
+  /** Same color as `#rrggbb`. */
+  hex: string;
+  /** Legacy 0–15 dye id (white=0 … black=15) used by pre-1.20.5 banner NBT. */
+  legacyId: number;
+  /** Dye item id, e.g. `light_blue_dye`. */
+  dyeItem: string;
+  /** Colored banner item id, e.g. `light_blue_banner`. */
+  bannerItem: string;
+}
+
+/** A banner overlay pattern (the loom layers stacked over a base color). */
+export interface BannerPatternDefinition {
+  /** Registry/pattern id, e.g. `stripe_bottom`. */
+  id: string;
+  /** Texture file basename under `entity/banner/` (matches `id`). */
+  assetId: string;
+  /** Dataset-relative texture path, e.g. `images/entity/banner/stripe_bottom.png`. */
+  texturePath: string;
+  /** Heraldic display name (e.g. "Saltire"), the color word stripped from `en_us`. */
+  label: string;
+  /** Legacy 2-letter NBT code (e.g. `bs`); absent for patterns added after 1.20.4. */
+  legacyCode?: string;
+  /** Whether the pattern needs a banner-pattern item in the loom (not just dye). */
+  requiresItem: boolean;
+  /** The banner-pattern item id when `requiresItem`, e.g. `creeper_banner_pattern`. */
+  patternItem?: string;
+}
+
+/** Everything the banner designer needs: the overlay catalog + dye colors. */
+export interface BannerDataset {
+  patterns: BannerPatternDefinition[];
+  colors: BannerColorDefinition[];
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -420,8 +518,11 @@ export interface VersionDataset {
   lootTables: LootTableDefinition[];
   advancements: AdvancementDefinition[];
   translations: TranslationEntry[];
+  biomes: BiomeDefinition[];
   mobImages: MobImageDefinition[];
   mobSounds: MobSoundDefinition[];
+  /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
+  banners?: BannerDataset;
   mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
   resourcePack?: ResourcePackDefinition;
 }
@@ -456,6 +557,7 @@ export interface VersionDiff {
   lootTables: CollectionDiff<LootTableDefinition>;
   advancements: CollectionDiff<AdvancementDefinition>;
   translations: CollectionDiff<TranslationEntry>;
+  biomes: CollectionDiff<BiomeDefinition>;
   mobImages: CollectionDiff<MobImageDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
 }

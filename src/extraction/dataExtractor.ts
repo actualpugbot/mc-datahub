@@ -29,6 +29,8 @@ import {
   textureKindFromPath,
 } from "./normalizers.js";
 import { buildPalettes } from "./palettes.js";
+import { buildBanners } from "./banners.js";
+import { buildBiomes } from "./biomes.js";
 
 const BLOCKSTATE_PREFIX = "assets/minecraft/blockstates/";
 const MODEL_PREFIX = "assets/minecraft/models/";
@@ -62,6 +64,8 @@ export class MinecraftDataExtractor {
     const lootTables = await this.readLootTables(paths, source);
     const advancements = await this.readAdvancements(paths, source);
     const translations = await this.readTranslations(paths, source);
+    const biomes = await buildBiomes(paths, source, tags, translations);
+    const banners = buildBanners(translations, paths);
 
     return {
       version,
@@ -83,6 +87,8 @@ export class MinecraftDataExtractor {
       lootTables,
       advancements,
       translations,
+      biomes,
+      banners,
       mobImages: [],
       mobSounds: [],
     };

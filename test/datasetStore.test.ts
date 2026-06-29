@@ -45,6 +45,7 @@ describe("dataset store", () => {
       lootTables: [],
       advancements: [],
       translations: [],
+      biomes: [],
       mobImages: [
         {
           id: "minecraft:allay",
@@ -128,6 +129,104 @@ describe("dataset store", () => {
     expect(loaded.textures[0]?.imagePath).toBe("images/block/oak_planks.png");
     expect(loaded.mobImages[0]?.imagePath).toBe("mob-images/allay/allay.png");
     expect(loaded.mobSoundMinecraftWiki?.categories[0]?.id).toBe("allay");
+  });
+
+  test("loads biome and banner sidecars for legacy dataset json files", async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), "mc-datahub-dataset-store-sidecars-"));
+    const store = new DatasetStore(createWorkspacePaths(root), createConsoleLogger(false));
+    const directory = join(root, "datasets/25w15a");
+    await fs.mkdir(directory, { recursive: true });
+
+    const legacyDataset = {
+      version: "25w15a",
+      generatedAt: "2026-04-09T00:00:00.000Z",
+      provenance: {
+        sourceArtifacts: ["legacy"],
+        extractedFromPaths: [],
+      },
+      blocks: [],
+      items: [],
+      recipes: [],
+      textures: [],
+      models: [],
+      palettes: [],
+      itemStats: [],
+      blockProperties: [],
+      enchantments: [],
+      tags: [],
+      lootTables: [],
+      advancements: [],
+      translations: [],
+      mobImages: [],
+      mobSounds: [],
+    } satisfies Omit<VersionDataset, "biomes">;
+
+    await fs.writeFile(join(directory, "dataset.json"), JSON.stringify(legacyDataset), "utf8");
+    await fs.writeFile(
+      join(directory, "biomes.json"),
+      JSON.stringify({
+        version: "25w15a",
+        generatedAt: "2026-04-09T00:00:00.000Z",
+        biomes: [
+          {
+            id: "minecraft:plains",
+            key: "plains",
+            name: "Plains",
+            dimension: "overworld",
+            category: "plains",
+            placement: "surface",
+            requiresY: false,
+            vertical: false,
+            surfaceClimate: true,
+            surfaceMap: true,
+            searchable: true,
+            temperature: 0.8,
+            downfall: 0.4,
+            hasPrecipitation: true,
+            effects: { waterColor: "#3f76e4" },
+            tags: ["is_overworld"],
+            sourcePath: "data/minecraft/worldgen/biome/plains.json",
+            raw: {},
+          },
+        ],
+      }),
+      "utf8",
+    );
+    await fs.writeFile(
+      join(directory, "banners.json"),
+      JSON.stringify({
+        version: "25w15a",
+        generatedAt: "2026-04-09T00:00:00.000Z",
+        patterns: [
+          {
+            id: "stripe_bottom",
+            assetId: "stripe_bottom",
+            texturePath: "images/entity/banner/stripe_bottom.png",
+            label: "Base",
+            legacyCode: "bs",
+            requiresItem: false,
+          },
+        ],
+        colors: [
+          {
+            id: "white",
+            label: "White",
+            rgb: [249, 255, 254],
+            hex: "#f9fffe",
+            legacyId: 0,
+            dyeItem: "white_dye",
+            bannerItem: "white_banner",
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const loaded = await store.loadDataset("25w15a");
+
+    expect(loaded.biomes.map((biome) => biome.id)).toEqual(["minecraft:plains"]);
+    expect(loaded.banners?.patterns.map((pattern) => pattern.id)).toEqual(["stripe_bottom"]);
+    expect(loaded.banners?.colors.map((color) => color.id)).toEqual(["white"]);
   });
 
   test("saves minecraft.wiki mob sound snapshots with timestamped paths", async () => {

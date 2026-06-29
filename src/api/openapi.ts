@@ -17,6 +17,11 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
   { slug: "loot-tables", key: "lootTables", summary: "Loot tables with derived item drops and functions." },
   { slug: "advancements", key: "advancements", summary: "Advancement tree with criteria, display keys, and rewards." },
   { slug: "translations", key: "translations", summary: "en_us language entries (display names)." },
+  {
+    slug: "biomes",
+    key: "biomes",
+    summary: "Biome definitions: display name, dimension, category, temperature, effect colors, and tags.",
+  },
   { slug: "mob-images", key: "mobImages", summary: "Mob image metadata; pixels are served under /assets." },
   { slug: "mob-sounds", key: "mobSounds", summary: "Mob sound metadata and variant references." },
   { slug: "palettes", key: "palettes", summary: "Extracted and curated color palettes." },

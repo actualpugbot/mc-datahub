@@ -7,6 +7,8 @@ import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
 import { encodePng, type RgbColor } from "../extraction/png.js";
 import type {
   AdvancementDefinition,
+  BannerDataset,
+  BiomeDefinition,
   BlockPropertyDefinition,
   EnchantmentDefinition,
   ItemStatDefinition,
@@ -56,6 +58,17 @@ export class DatasetStore {
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
       writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
       writeJsonFile(join(directory, "advancements.json"), dataset.advancements),
+      writeJsonFile(join(directory, "biomes.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        biomes: dataset.biomes,
+      }),
+      writeJsonFile(join(directory, "banners.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        patterns: dataset.banners?.patterns ?? [],
+        colors: dataset.banners?.colors ?? [],
+      }),
       writeJsonFile(join(directory, "translations.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -83,6 +96,7 @@ export class DatasetStore {
   }
 
   async loadDataset(version: string): Promise<VersionDataset> {
+    const directory = datasetVersionDir(this.paths, version);
     const dataset = await readJsonFile<
       VersionDataset & {
         palettes?: PaletteDefinition[];
@@ -93,12 +107,15 @@ export class DatasetStore {
         lootTables?: LootTableDefinition[];
         advancements?: AdvancementDefinition[];
         translations?: TranslationEntry[];
+        biomes?: BiomeDefinition[];
         mobImages?: MobImageDefinition[];
         mobSounds?: MobSoundDefinition[];
         mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
         resourcePack?: ResourcePackDefinition;
       }
-    >(join(datasetVersionDir(this.paths, version), "dataset.json"));
+    >(join(directory, "dataset.json"));
+    const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
+    const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
 
     return {
       ...dataset,
@@ -114,6 +131,8 @@ export class DatasetStore {
       lootTables: dataset.lootTables ?? [],
       advancements: dataset.advancements ?? [],
       translations: dataset.translations ?? [],
+      biomes,
+      banners,
       mobImages: dataset.mobImages ?? [],
       mobSounds: dataset.mobSounds ?? [],
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
@@ -128,6 +147,30 @@ export class DatasetStore {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
+  }
+
+  private async loadBiomeSidecar(directory: string): Promise<BiomeDefinition[]> {
+    const path = join(directory, "biomes.json");
+    if (!(await fileExists(path))) {
+      return [];
+    }
+
+    const payload = await readJsonFile<{ biomes?: BiomeDefinition[] } | BiomeDefinition[]>(path);
+    return Array.isArray(payload) ? payload : (payload.biomes ?? []);
+  }
+
+  private async loadBannerSidecar(directory: string): Promise<BannerDataset> {
+    const path = join(directory, "banners.json");
+    if (!(await fileExists(path))) {
+      return { patterns: [], colors: [] };
+    }
+
+    const payload = await readJsonFile<{
+      banners?: BannerDataset;
+      patterns?: BannerDataset["patterns"];
+      colors?: BannerDataset["colors"];
+    }>(path);
+    return payload.banners ?? { patterns: payload.patterns ?? [], colors: payload.colors ?? [] };
   }
 
   async saveDiff(diff: VersionDiff): Promise<string> {
