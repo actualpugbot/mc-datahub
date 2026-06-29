@@ -96,6 +96,7 @@ function createDataset(version: string): VersionDataset {
     translations: [],
     biomes: [],
     mobImages: [],
+    mobModels: [],
     mobSounds: [],
   };
 }

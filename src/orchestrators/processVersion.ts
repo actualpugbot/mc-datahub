@@ -14,6 +14,7 @@ import { ZipArchiveSource } from "../archive/zipArchiveSource.js";
 import type { MinecraftDataExtractor } from "../extraction/dataExtractor.js";
 import { MinecraftWikiMobSoundSource, buildMinecraftWikiMobSoundAlignment } from "../extraction/minecraftWikiMobSoundSource.js";
 import type { MobImageExtractor } from "../extraction/mobImageExtractor.js";
+import type { MobModelExtractor } from "../extraction/mobModelExtractor.js";
 import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { MobSoundDefinition } from "../domain/types.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
@@ -32,6 +33,7 @@ export class ProcessVersionWorkflow {
     private readonly decompilePipeline: DecompilePipeline,
     private readonly extractor: MinecraftDataExtractor,
     private readonly mobImageExtractor: MobImageExtractor,
+    private readonly mobModelExtractor: MobModelExtractor,
     private readonly mobSoundExtractor: MobSoundExtractor,
     private readonly mobSoundMinecraftWiki: MinecraftWikiMobSoundSource,
     private readonly sourceExtractor: DecompiledSourceExtractor,
@@ -91,12 +93,14 @@ export class ProcessVersionWorkflow {
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
     const mobSoundData = await this.mobSoundExtractor.extract(manifestEntry.id, metadata, sources, decompiledClientRoot);
     const mobImages = await this.mobImageExtractor.extract(mobSoundData.mobSounds, sources, decompiledClientRoot);
+    const mobModels = await this.mobModelExtractor.extract(mobSoundData.mobSounds, decompiledClientRoot);
     const sourceDerived = await this.sourceExtractor.extract(decompiledClientRoot);
     dataset.provenance.mappingProvider = options.mappingProvider;
     dataset.itemStats = sourceDerived.itemStats;
     dataset.blockProperties = sourceDerived.blockProperties;
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
+    dataset.mobModels = mobModels;
     dataset.resourcePack = mobSoundData.resourcePack;
     const mobSoundMinecraftWiki = await this.buildMobSoundMinecraftWikiArtifacts(manifestEntry.id, dataset.mobSounds);
     if (mobSoundMinecraftWiki) {

@@ -80,6 +80,7 @@ describe("dataset store", () => {
           ],
         },
       ],
+      mobModels: [],
       mobSounds: [],
       mobSoundMinecraftWiki: {
         source: "minecraft.wiki",
@@ -158,6 +159,7 @@ describe("dataset store", () => {
       advancements: [],
       translations: [],
       mobImages: [],
+      mobModels: [],
       mobSounds: [],
     } satisfies Omit<VersionDataset, "biomes">;
 

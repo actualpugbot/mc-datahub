@@ -43,6 +43,7 @@ workspace/
     images/             Extracted texture PNG files
     mob-images.json
     mob-images/         Exported mob entity PNG files
+    mob-models.json     Source-derived model layers, cubes, pivots, and skin UVs
     models.json
     palettes.json
   diffs/
@@ -60,6 +61,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `models.json`: model parent chains and texture references
 - `textures.json` plus `images/`: texture metadata and exported PNG files
 - `mob-images.json` plus `mob-images/`: mob image metadata and exported representative entity PNG files
+- `mob-models.json`: source-derived mob model layers with exact cube geometry, pivots, rotations, texture sizes, and per-face UV rectangles for 3D rendering
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
@@ -89,7 +91,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 - `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
 - `GET /versions/:version/dataset` — the full combined dataset in one response
 - `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
-- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,tags,loot-tables,advancements,translations,palettes,mob-images,mob-sounds}`
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
 
 Every collection endpoint supports `?id=` (exact id) or `?q=` (substring) filtering and `?limit=`/`?offset=` pagination; `tags` also supports `?registry=`. A real OpenAPI 3.1 document is served at `GET /openapi.json` for Swagger UI and client codegen.
@@ -125,7 +127,7 @@ npm run cli -- api serve --port 4000
 
 `versions list` reports which versions already have a processed dataset on disk.
 
-`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
+`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 

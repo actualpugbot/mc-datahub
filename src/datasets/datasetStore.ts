@@ -16,6 +16,7 @@ import type {
   MinecraftWikiMobSoundAlignment,
   MinecraftWikiMobSoundSnapshot,
   MobImageDefinition,
+  MobModelDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   ResourcePackDefinition,
@@ -79,6 +80,11 @@ export class DatasetStore {
         generatedAt: dataset.generatedAt,
         mobs: dataset.mobImages,
       }),
+      writeJsonFile(join(directory, "mob-models.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        mobs: dataset.mobModels,
+      }),
       writeJsonFile(join(directory, "mob-sounds.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -109,6 +115,7 @@ export class DatasetStore {
         translations?: TranslationEntry[];
         biomes?: BiomeDefinition[];
         mobImages?: MobImageDefinition[];
+        mobModels?: MobModelDefinition[];
         mobSounds?: MobSoundDefinition[];
         mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
         resourcePack?: ResourcePackDefinition;
@@ -116,6 +123,7 @@ export class DatasetStore {
     >(join(directory, "dataset.json"));
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
+    const mobModels = dataset.mobModels ?? (await this.loadMobModelSidecar(directory));
 
     return {
       ...dataset,
@@ -134,6 +142,7 @@ export class DatasetStore {
       biomes,
       banners,
       mobImages: dataset.mobImages ?? [],
+      mobModels,
       mobSounds: dataset.mobSounds ?? [],
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
       resourcePack: dataset.resourcePack,
@@ -173,6 +182,15 @@ export class DatasetStore {
     return payload.banners ?? { patterns: payload.patterns ?? [], colors: payload.colors ?? [] };
   }
 
+  private async loadMobModelSidecar(directory: string): Promise<MobModelDefinition[]> {
+    const path = join(directory, "mob-models.json");
+    if (!(await fileExists(path))) {
+      return [];
+    }
+
+    const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
+    return Array.isArray(payload) ? payload : (payload.mobs ?? []);
+  }
   async saveDiff(diff: VersionDiff): Promise<string> {
     await ensureDir(this.paths.diffsDir);
     const outputPath = join(this.paths.diffsDir, `${diff.fromVersion}__${diff.toVersion}.json`);

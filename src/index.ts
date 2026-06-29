@@ -10,6 +10,7 @@ import { VersionDownloader } from "./download/versionDownloader.js";
 import { MinecraftDataExtractor } from "./extraction/dataExtractor.js";
 import { MinecraftWikiMobSoundSource } from "./extraction/minecraftWikiMobSoundSource.js";
 import { MobImageExtractor } from "./extraction/mobImageExtractor.js";
+import { MobModelExtractor } from "./extraction/mobModelExtractor.js";
 import { MobSoundExtractor } from "./extraction/mobSoundExtractor.js";
 import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
@@ -33,6 +34,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const decompilePipeline = new DecompilePipeline(config, logger);
   const extractor = new MinecraftDataExtractor(logger);
   const mobImageExtractor = new MobImageExtractor(logger);
+  const mobModelExtractor = new MobModelExtractor(logger);
   const mobSoundExtractor = new MobSoundExtractor(http, cache, logger);
   const mobSoundMinecraftWiki = new MinecraftWikiMobSoundSource(http, cache, logger, config.urls.minecraftWikiApi);
   const sourceExtractor = new DecompiledSourceExtractor(logger);
@@ -46,6 +48,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     decompilePipeline,
     extractor,
     mobImageExtractor,
+    mobModelExtractor,
     mobSoundExtractor,
     mobSoundMinecraftWiki,
     sourceExtractor,
@@ -68,6 +71,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     decompilePipeline,
     extractor,
     mobImageExtractor,
+    mobModelExtractor,
     mobSoundExtractor,
     mobSoundMinecraftWiki,
     sourceExtractor,

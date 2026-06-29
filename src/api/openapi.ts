@@ -23,6 +23,7 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     summary: "Biome definitions: display name, dimension, category, temperature, effect colors, and tags.",
   },
   { slug: "mob-images", key: "mobImages", summary: "Mob image metadata; pixels are served under /assets." },
+  { slug: "mob-models", key: "mobModels", summary: "Mob model layers, exact cube geometry, and skin UV rectangles." },
   { slug: "mob-sounds", key: "mobSounds", summary: "Mob sound metadata and variant references." },
   { slug: "palettes", key: "palettes", summary: "Extracted and curated color palettes." },
 ];

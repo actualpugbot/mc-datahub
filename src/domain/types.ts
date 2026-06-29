@@ -271,6 +271,55 @@ export interface MobSoundDefinition {
   soundEvents: MobSoundEventDefinition[];
 }
 
+export type MobModelFaceName = "down" | "up" | "west" | "north" | "east" | "south";
+
+export interface MobModelFaceDefinition {
+  /** Pixel-space UV rectangle `[u0, v0, u1, v1]` on the layer texture. */
+  uv: [number, number, number, number];
+  /** Normalized UV rectangle `[u0, v0, u1, v1]` for WebGL/Three.js consumers. */
+  normalizedUv: [number, number, number, number];
+}
+
+export interface MobModelCubeDefinition {
+  name?: string;
+  origin: [number, number, number];
+  size: [number, number, number];
+  deformation: [number, number, number];
+  mirror: boolean;
+  texOffs: [number, number];
+  faces: Record<MobModelFaceName, MobModelFaceDefinition>;
+}
+
+export interface MobModelPartDefinition {
+  name: string;
+  path: string;
+  pivot: [number, number, number];
+  rotation: [number, number, number];
+  cubes: MobModelCubeDefinition[];
+  children: MobModelPartDefinition[];
+}
+
+export interface MobModelLayerDefinition {
+  id: string;
+  modelClass?: string;
+  modelMethod?: string;
+  sourcePath?: string;
+  textureSize?: [number, number];
+  root?: MobModelPartDefinition;
+  rawExpression?: string;
+  status: "baked" | "partial" | "unresolved";
+  warnings: string[];
+}
+
+export interface MobModelDefinition {
+  id: string;
+  localId: string;
+  displayName: string;
+  rendererClass?: string;
+  modelLayers: string[];
+  texturePaths: string[];
+  layers: MobModelLayerDefinition[];
+}
 export interface MinecraftWikiMobSoundFile {
   pageId: number;
   title: string;
@@ -520,6 +569,7 @@ export interface VersionDataset {
   translations: TranslationEntry[];
   biomes: BiomeDefinition[];
   mobImages: MobImageDefinition[];
+  mobModels: MobModelDefinition[];
   mobSounds: MobSoundDefinition[];
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
@@ -559,6 +609,7 @@ export interface VersionDiff {
   translations: CollectionDiff<TranslationEntry>;
   biomes: CollectionDiff<BiomeDefinition>;
   mobImages: CollectionDiff<MobImageDefinition>;
+  mobModels: CollectionDiff<MobModelDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
 }
 

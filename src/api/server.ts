@@ -290,6 +290,8 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
       };
     case "mob-images":
       return { responseKey: "mobImages", entries: filterMobImages(dataset.mobImages, id, query) };
+    case "mob-models":
+      return { responseKey: "mobModels", entries: filterMobModels(dataset.mobModels, id, query) };
     case "mob-sounds":
       return { responseKey: "mobSounds", entries: filterMobSounds(dataset.mobSounds, id, query) };
     default:
@@ -319,6 +321,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       palettes: dataset.palettes.length,
       biomes: dataset.biomes.length,
       mobImages: dataset.mobImages.length,
+      mobModels: dataset.mobModels.length,
       mobSounds: dataset.mobSounds.length,
     },
   };
@@ -352,6 +355,7 @@ function summarizeDiff(diff: ReturnType<DiffEngine["compare"]>): Record<string, 
       palettes: summarize(diff.palettes),
       biomes: summarize(diff.biomes),
       mobImages: summarize(diff.mobImages),
+      mobModels: summarize(diff.mobModels),
       mobSounds: summarize(diff.mobSounds),
     },
   };
@@ -506,6 +510,32 @@ function filterMobImages<
   return entries;
 }
 
+function filterMobModels<
+  T extends {
+    id: string;
+    localId: string;
+    displayName: string;
+    rendererClass?: string;
+    modelLayers: string[];
+    texturePaths: string[];
+  },
+>(entries: T[], id?: string, query?: string): T[] {
+  if (id) {
+    const normalizedId = normalizeMinecraftId(id);
+    return entries.filter((entry) => entry.id === normalizedId || normalizeMinecraftId(entry.localId) === normalizedId);
+  }
+
+  if (query) {
+    const normalizedQuery = query.toLowerCase();
+    return entries.filter((entry) =>
+      [entry.id, entry.localId, entry.displayName, entry.rendererClass ?? "", ...entry.modelLayers, ...entry.texturePaths].some(
+        (value) => value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }
+
+  return entries;
+}
 function filterMobSounds<
   T extends {
     id: string;

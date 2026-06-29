@@ -12,6 +12,7 @@ import type {
   LootTableDefinition,
   ModelDefinition,
   MobImageDefinition,
+  MobModelDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   RecipeDefinition,
@@ -48,6 +49,7 @@ export class DiffEngine {
       biomes: this.diffCollection<BiomeDefinition>(from.biomes, to.biomes),
       mobImages: this.diffCollection<MobImageDefinition>(from.mobImages, to.mobImages),
       mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
+      mobModels: this.diffCollection<MobModelDefinition>(from.mobModels, to.mobModels),
     };
   }
 
