@@ -236,13 +236,21 @@ export function modelKindFromPath(path: string): ModelDefinition["kind"] {
   return "other";
 }
 
-export function textureKindFromPath(path: string): "block" | "item" | "other" {
+export function textureKindFromPath(path: string): "block" | "item" | "entity" | "environment" | "other" {
   if (path.includes("/textures/block/")) {
     return "block";
   }
 
   if (path.includes("/textures/item/")) {
     return "item";
+  }
+
+  if (path.includes("/textures/entity/")) {
+    return "entity";
+  }
+
+  if (path.includes("/textures/environment/") || path.includes("/textures/colormap/")) {
+    return "environment";
   }
 
   return "other";

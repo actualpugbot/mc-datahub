@@ -34,6 +34,7 @@ import { buildBiomes } from "./biomes.js";
 
 const BLOCKSTATE_PREFIX = "assets/minecraft/blockstates/";
 const MODEL_PREFIX = "assets/minecraft/models/";
+const CLIENT_ITEM_PREFIX = "assets/minecraft/items/";
 const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const RECIPE_PREFIXES = ["data/minecraft/recipe/", "data/minecraft/recipes/"] as const;
 const BLOCK_TAG_PREFIX = "data/minecraft/tags/blocks/";
@@ -225,7 +226,11 @@ export class MinecraftDataExtractor {
     itemTags: Map<string, string[]>,
     recipes: RecipeDefinition[],
   ): Promise<ItemDefinition[]> {
-    const itemModelPaths = paths.filter((path) => path.startsWith(`${MODEL_PREFIX}item/`) && path.endsWith(".json"));
+    const clientItemPaths = paths.filter((path) => path.startsWith(CLIENT_ITEM_PREFIX) && path.endsWith(".json"));
+    const itemModelPaths =
+      clientItemPaths.length > 0
+        ? clientItemPaths
+        : paths.filter((path) => path.startsWith(`${MODEL_PREFIX}item/`) && path.endsWith(".json"));
     const modelsById = new Map(models.map((model) => [model.id, model]));
     const recipesByResult = new Map<string, string[]>();
 
@@ -241,23 +246,30 @@ export class MinecraftDataExtractor {
 
     const items: ItemDefinition[] = [];
     for (const path of itemModelPaths) {
-      const relativeId = path.slice(`${MODEL_PREFIX}item/`.length).replace(/\.json$/i, "");
+      const itemPrefix = path.startsWith(CLIENT_ITEM_PREFIX) ? CLIENT_ITEM_PREFIX : `${MODEL_PREFIX}item/`;
+      const relativeId = path.slice(itemPrefix.length).replace(/\.json$/i, "");
       if (relativeId === "generated" || relativeId === "handheld" || relativeId.startsWith("template_")) {
         continue;
       }
 
       const raw = await source.readJson<JsonValue>(path);
-      const id = idFromAssetPath(`${MODEL_PREFIX}item/`, path);
+      const id = idFromAssetPath(itemPrefix, path);
       const namespacedId = normalizeMinecraftId(id);
       const textureRefs = new Set<string>();
-      const modelRef = normalizeMinecraftId(`item/${id.replace(/^minecraft:/, "")}`);
-      this.collectModelTextures(modelRef, modelsById, textureRefs, new Set<string>());
+      const modelRefs = path.startsWith(CLIENT_ITEM_PREFIX)
+        ? collectClientItemModelRefs(raw)
+        : [normalizeMinecraftId(`item/${id.replace(/^minecraft:/, "")}`)];
+      const modelRef = modelRefs[0] ?? normalizeMinecraftId(`item/${id.replace(/^minecraft:/, "")}`);
+      for (const ref of modelRefs.length > 0 ? modelRefs : [modelRef]) {
+        this.collectModelTextures(ref, modelsById, textureRefs, new Set<string>());
+      }
 
       items.push({
         id: namespacedId,
         tags: itemTags.get(namespacedId) ?? [],
         recipeIds: (recipesByResult.get(namespacedId) ?? []).sort(),
         modelRef,
+        clientItemPath: path.startsWith(CLIENT_ITEM_PREFIX) ? path : undefined,
         textureRefs: Array.from(textureRefs).sort(),
         sourcePath: path,
         raw,
@@ -504,4 +516,27 @@ export class MinecraftDataExtractor {
       return [];
     }
   }
+}
+
+function collectClientItemModelRefs(raw: JsonValue): string[] {
+  const refs = new Set<string>();
+  const visit = (value: JsonValue): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (typeof value.model === "string") {
+      refs.add(normalizeMinecraftId(value.model));
+    }
+
+    Object.values(value).forEach(visit);
+  };
+
+  visit(raw);
+  return Array.from(refs).sort();
 }

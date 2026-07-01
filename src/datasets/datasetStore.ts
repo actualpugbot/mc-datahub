@@ -15,6 +15,7 @@ import type {
   LootTableDefinition,
   MinecraftWikiMobSoundAlignment,
   MinecraftWikiMobSoundSnapshot,
+  MinecraftRenderDataset,
   MobImageDefinition,
   MobModelDefinition,
   MobSoundDefinition,
@@ -55,6 +56,40 @@ export class DatasetStore {
       writeJsonFile(join(directory, "recipes.json"), dataset.recipes),
       writeJsonFile(join(directory, "textures.json"), dataset.textures),
       writeJsonFile(join(directory, "models.json"), dataset.models),
+      ...(dataset.renderData
+        ? [
+            writeJsonFile(join(directory, "blockstates.json"), dataset.renderData.blockstates),
+            writeJsonFile(join(directory, "block-models.json"), dataset.renderData.blockModels),
+            writeJsonFile(join(directory, "item-models.json"), dataset.renderData.itemModels),
+            writeJsonFile(join(directory, "item-displays.json"), dataset.renderData.itemDisplays),
+            writeJsonFile(join(directory, "render-textures.json"), dataset.renderData.textures),
+            writeJsonFile(join(directory, "atlases.json"), dataset.renderData.atlases),
+            writeJsonFile(join(directory, "render-layers.json"), dataset.renderData.renderLayers),
+            writeJsonFile(join(directory, "tints.json"), dataset.renderData.tints),
+            writeJsonFile(join(directory, "entities.json"), dataset.renderData.entities),
+            writeJsonFile(join(directory, "entity-models.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              mobs: dataset.renderData.entityModels,
+            }),
+            writeJsonFile(join(directory, "entity-renderers.json"), dataset.renderData.entityRenderers),
+            writeJsonFile(join(directory, "special-renderers.json"), dataset.renderData.specialRenderers),
+            writeJsonFile(join(directory, "render-validation.json"), dataset.renderData.validation),
+            writeJsonFile(join(directory, "version.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              renderData: {
+                blockstates: dataset.renderData.blockstates.length,
+                blockModels: dataset.renderData.blockModels.length,
+                itemModels: dataset.renderData.itemModels.length,
+                itemDisplays: dataset.renderData.itemDisplays.length,
+                textures: dataset.renderData.textures.length,
+                entities: dataset.renderData.entities.length,
+                specialRenderers: dataset.renderData.specialRenderers.length,
+              },
+            }),
+          ]
+        : []),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
       writeJsonFile(join(directory, "enchantments.json"), dataset.enchantments),
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
@@ -119,12 +154,14 @@ export class DatasetStore {
         mobModels?: MobModelDefinition[];
         mobSounds?: MobSoundDefinition[];
         mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
+        renderData?: MinecraftRenderDataset;
         resourcePack?: ResourcePackDefinition;
       }
     >(join(directory, "dataset.json"));
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
     const mobModels = this.normalizeMobModelTextureAssets(dataset.mobModels ?? (await this.loadMobModelSidecar(directory)));
+    const renderData = dataset.renderData ?? (await this.loadRenderDataSidecar(directory, dataset.version, dataset.generatedAt));
 
     return {
       ...dataset,
@@ -145,6 +182,7 @@ export class DatasetStore {
       mobImages: dataset.mobImages ?? [],
       mobModels,
       mobSounds: dataset.mobSounds ?? [],
+      renderData,
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
       resourcePack: dataset.resourcePack,
     };
@@ -191,6 +229,73 @@ export class DatasetStore {
 
     const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
+  }
+
+  private async loadRenderDataSidecar(
+    directory: string,
+    version: string,
+    generatedAt: string,
+  ): Promise<MinecraftRenderDataset | undefined> {
+    const blockstatesPath = join(directory, "blockstates.json");
+    if (!(await fileExists(blockstatesPath))) {
+      return undefined;
+    }
+
+    const [
+      blocks,
+      blockstates,
+      blockModels,
+      itemModels,
+      itemDisplays,
+      textures,
+      atlases,
+      renderLayers,
+      tints,
+      entities,
+      entityModelsPayload,
+      entityRenderers,
+      specialRenderers,
+    ] = await Promise.all([
+      readJsonFile<MinecraftRenderDataset["blocks"]>(join(directory, "blocks.json"), []),
+      readJsonFile<MinecraftRenderDataset["blockstates"]>(blockstatesPath, []),
+      readJsonFile<MinecraftRenderDataset["blockModels"]>(join(directory, "block-models.json"), []),
+      readJsonFile<MinecraftRenderDataset["itemModels"]>(join(directory, "item-models.json"), []),
+      readJsonFile<MinecraftRenderDataset["itemDisplays"]>(join(directory, "item-displays.json"), []),
+      readJsonFile<MinecraftRenderDataset["textures"]>(join(directory, "render-textures.json"), []),
+      readJsonFile<MinecraftRenderDataset["atlases"]>(join(directory, "atlases.json"), []),
+      readJsonFile<MinecraftRenderDataset["renderLayers"]>(join(directory, "render-layers.json"), []),
+      readJsonFile<MinecraftRenderDataset["tints"]>(join(directory, "tints.json"), []),
+      readJsonFile<MinecraftRenderDataset["entities"]>(join(directory, "entities.json"), []),
+      readJsonFile<{ mobs?: MinecraftRenderDataset["entityModels"] } | MinecraftRenderDataset["entityModels"]>(
+        join(directory, "entity-models.json"),
+        [],
+      ),
+      readJsonFile<MinecraftRenderDataset["entityRenderers"]>(join(directory, "entity-renderers.json"), []),
+      readJsonFile<MinecraftRenderDataset["specialRenderers"]>(join(directory, "special-renderers.json"), []),
+    ]);
+    const validationPath = join(directory, "render-validation.json");
+    const validation = (await fileExists(validationPath))
+      ? await readJsonFile<MinecraftRenderDataset["validation"]>(validationPath)
+      : undefined;
+
+    return {
+      version,
+      generatedAt,
+      blocks,
+      blockstates,
+      blockModels,
+      itemModels,
+      itemDisplays,
+      textures,
+      atlases,
+      renderLayers,
+      tints,
+      entities,
+      entityModels: Array.isArray(entityModelsPayload) ? entityModelsPayload : (entityModelsPayload.mobs ?? []),
+      entityRenderers,
+      specialRenderers,
+      validation,
+    };
   }
 
   private normalizeMobModelTextureAssets(mobModels: MobModelDefinition[]): MobModelDefinition[] {

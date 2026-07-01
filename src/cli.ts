@@ -29,11 +29,23 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   "mob-images": (dataset) => dataset.mobImages,
   "mob-models": (dataset) => dataset.mobModels,
   "mob-sounds": (dataset) => dataset.mobSounds,
+  "render-data": (dataset) => dataset.renderData,
+  blockstates: (dataset) => dataset.renderData?.blockstates ?? [],
+  "block-models": (dataset) => dataset.renderData?.blockModels ?? [],
+  "item-models": (dataset) => dataset.renderData?.itemModels ?? [],
+  "item-displays": (dataset) => dataset.renderData?.itemDisplays ?? [],
+  "render-layers": (dataset) => dataset.renderData?.renderLayers ?? [],
+  tints: (dataset) => dataset.renderData?.tints ?? [],
+  entities: (dataset) => dataset.renderData?.entities ?? [],
+  "entity-models": (dataset) => dataset.renderData?.entityModels ?? [],
+  "entity-renderers": (dataset) => dataset.renderData?.entityRenderers ?? [],
+  "special-renderers": (dataset) => dataset.renderData?.specialRenderers ?? [],
   dataset: (dataset) => dataset,
 };
 import { dumpBanners } from "./orchestrators/dumpBanners.js";
 import { buildMobAudioDumpPayload, dumpMobAudioFiles } from "./orchestrators/dumpMobAudio.js";
 import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
+import { validateRenderDataset } from "./validation/renderValidation.js";
 
 function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -359,6 +371,32 @@ async function main(): Promise<void> {
       const bannerImagesDir = join(datasetVersionDir(context.config.workspace, version), "images", "entity", "banner");
       const result = await dumpBanners(payload, bannerImagesDir, outputDirectory);
       console.log(JSON.stringify(result, null, 2));
+    });
+
+  const validateCommand = program.command("validate").description("Validate processed datasets.");
+  validateCommand
+    .command("render")
+    .argument("<version>", "Minecraft version id with processed render data")
+    .option("--output <path>", "Write validation report JSON to a file")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const dataset = await context.datasetStore.loadDataset(version);
+      if (!dataset.renderData) {
+        throw new Error(`Dataset ${version} does not include render data. Re-run process version for this version.`);
+      }
+
+      const report = validateRenderDataset(dataset.renderData);
+      if (options.output) {
+        const outputPath = resolve(process.cwd(), options.output);
+        await writeJsonFile(outputPath, report);
+        console.log(JSON.stringify({ version, status: report.status, errorCount: report.counts.errors, outputPath }, null, 2));
+        return;
+      }
+
+      console.log(JSON.stringify(report, null, 2));
+      if (report.status === "failed") {
+        process.exitCode = 1;
+      }
     });
 
   const apiCommand = program.command("api").description("Serve extracted datasets over HTTP.");

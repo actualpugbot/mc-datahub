@@ -25,6 +25,12 @@ describe("data extractor", () => {
           layer0: "item/stick",
         },
       }),
+      "assets/minecraft/items/stick.json": JSON.stringify({
+        model: {
+          type: "minecraft:model",
+          model: "minecraft:item/stick",
+        },
+      }),
       "assets/minecraft/models/item/generated.json": JSON.stringify({
         textures: {},
       }),
@@ -111,6 +117,7 @@ describe("data extractor", () => {
     expect(dataset.blocks[0]?.textureRefs).toContain("minecraft:block/oak_planks");
 
     expect(dataset.items[0]?.id).toBe("minecraft:stick");
+    expect(dataset.items[0]?.clientItemPath).toBe("assets/minecraft/items/stick.json");
     expect(dataset.items[0]?.recipeIds).toContain("minecraft:stick");
     expect(dataset.items[0]?.tags).toContain("minecraft:sticks");
 

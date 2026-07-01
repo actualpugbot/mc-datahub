@@ -17,7 +17,9 @@ import type { MobImageExtractor } from "../extraction/mobImageExtractor.js";
 import type { MobModelExtractor } from "../extraction/mobModelExtractor.js";
 import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { MobSoundDefinition } from "../domain/types.js";
+import type { RenderDataExtractor } from "../extraction/renderDataExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
+import { validateRenderDataset } from "../validation/renderValidation.js";
 
 export interface ProcessVersionOptions {
   mappingProvider: MappingProvider;
@@ -35,6 +37,7 @@ export class ProcessVersionWorkflow {
     private readonly mobImageExtractor: MobImageExtractor,
     private readonly mobModelExtractor: MobModelExtractor,
     private readonly mobSoundExtractor: MobSoundExtractor,
+    private readonly renderDataExtractor: RenderDataExtractor,
     private readonly mobSoundMinecraftWiki: MinecraftWikiMobSoundSource,
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly datasetStore: DatasetStore,
@@ -101,6 +104,14 @@ export class ProcessVersionWorkflow {
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.mobModels = mobModels;
+    dataset.renderData = await this.renderDataExtractor.extract(manifestEntry.id, sources, {
+      translations: dataset.translations,
+      blocks: dataset.blocks,
+      mobModels,
+      decompiledClientRoot,
+    });
+    dataset.renderData.validation = validateRenderDataset(dataset.renderData);
+    dataset.textures = dataset.renderData.textures;
     dataset.resourcePack = mobSoundData.resourcePack;
     const mobSoundMinecraftWiki = await this.buildMobSoundMinecraftWikiArtifacts(manifestEntry.id, dataset.mobSounds);
     if (mobSoundMinecraftWiki) {

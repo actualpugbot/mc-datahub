@@ -87,9 +87,14 @@ export interface ModelDefinition {
 
 export interface TextureDefinition {
   id: string;
-  kind: "block" | "item" | "other";
+  kind: "block" | "item" | "entity" | "environment" | "other";
   sourcePath: string;
   imagePath?: string;
+  width?: number;
+  height?: number;
+  animation?: JsonValue;
+  atlases?: string[];
+  transparency?: "opaque" | "transparent" | "unknown";
 }
 
 export interface PaletteDefinition {
@@ -133,6 +138,7 @@ export interface ItemDefinition {
   tags: string[];
   recipeIds: string[];
   modelRef: string;
+  clientItemPath?: string;
   textureRefs: string[];
   sourcePath: string;
   raw: JsonValue;
@@ -326,6 +332,204 @@ export interface MobModelDefinition {
   texturePaths: string[];
   textureAssets: MobModelTextureDefinition[];
   layers: MobModelLayerDefinition[];
+}
+
+export type RenderProvenanceKind = "asset" | "generated-report" | "client-source" | "derived" | "fallback";
+
+export interface RenderProvenance {
+  kind: RenderProvenanceKind;
+  path?: string;
+  className?: string;
+  method?: string;
+  reason?: string;
+}
+
+export type BlockRenderLayerKind = "solid" | "cutout" | "cutout_mipped" | "translucent" | "unknown";
+
+export interface BlockstateModelVariant {
+  model: string;
+  x: number;
+  y: number;
+  uvlock: boolean;
+  weight: number;
+  provenance: RenderProvenance;
+}
+
+export interface BlockstateMultipartCase {
+  when?: JsonValue;
+  apply: BlockstateModelVariant[];
+  provenance: RenderProvenance;
+}
+
+export interface BlockstateRenderDefinition {
+  id: string;
+  sourcePath: string;
+  properties: Record<string, string[]>;
+  defaultState?: Record<string, string>;
+  variants: Record<string, BlockstateModelVariant[]>;
+  multipart: BlockstateMultipartCase[];
+  modelRefs: string[];
+  raw: JsonValue;
+  provenance: RenderProvenance;
+}
+
+export interface RenderModelFace {
+  texture?: string;
+  resolvedTextureId?: string;
+  uv?: [number, number, number, number];
+  rotation: number;
+  cullface?: string;
+  tintIndex?: number;
+}
+
+export interface RenderModelElement {
+  from: [number, number, number];
+  to: [number, number, number];
+  rotation?: JsonValue;
+  shade?: boolean;
+  faces: Partial<Record<"down" | "up" | "north" | "south" | "west" | "east", RenderModelFace>>;
+}
+
+export interface ResolvedRenderModel {
+  id: string;
+  kind: "block" | "item" | "other";
+  sourcePath: string;
+  parent?: string;
+  parentChain: string[];
+  textures: Record<string, string>;
+  unresolvedTextures: string[];
+  elements: RenderModelElement[];
+  display?: JsonValue;
+  ambientOcclusion?: boolean;
+  guiLight?: string;
+  raw: JsonValue;
+  provenance: RenderProvenance;
+}
+
+export interface ClientItemRenderDefinition {
+  id: string;
+  displayName: string;
+  sourcePath: string;
+  modelRef?: string;
+  renderKind: "generated_flat_item" | "block_model_gui" | "handheld_item" | "special_renderer" | "composite" | "unknown";
+  textureLayers: string[];
+  overrides: JsonValue[];
+  predicates: string[];
+  displayTransforms: Record<string, JsonValue>;
+  guiDescriptor: JsonValue;
+  specialRendererKinds: string[];
+  raw: JsonValue;
+  provenance: RenderProvenance;
+}
+
+export interface TextureRenderDefinition {
+  id: string;
+  sourcePath: string;
+  imagePath: string;
+  width?: number;
+  height?: number;
+  animation?: JsonValue;
+  atlases: string[];
+  kind: "block" | "item" | "entity" | "environment" | "other";
+  transparency: "opaque" | "transparent" | "unknown";
+  provenance: RenderProvenance;
+}
+
+export interface AtlasRenderDefinition {
+  id: string;
+  sourcePath: string;
+  sources: JsonValue[];
+  raw: JsonValue;
+  provenance: RenderProvenance;
+}
+
+export interface RenderLayerDefinition {
+  id: string;
+  layer: BlockRenderLayerKind;
+  blocks: string[];
+  source: RenderProvenance;
+}
+
+export interface TintDefinition {
+  id: string;
+  target: "block" | "item";
+  tintType: string;
+  indices: number[];
+  source: RenderProvenance;
+  fallback?: string;
+}
+
+export interface EntityRendererDefinition {
+  id: string;
+  displayName: string;
+  rendererClass?: string;
+  sourcePath?: string;
+  modelLayers: string[];
+  textureAssets: MobModelTextureDefinition[];
+  variantTextures: Record<string, string>;
+  overlays: string[];
+  source: RenderProvenance;
+}
+
+export interface EntityRenderDefinition {
+  id: string;
+  displayName: string;
+  rendererId: string;
+  modelLayerIds: string[];
+  defaultAdultLayer?: string;
+  babyLayer?: string;
+  variantLayerIds: string[];
+  textureAssets: MobModelTextureDefinition[];
+  source: RenderProvenance;
+}
+
+export interface SpecialRendererDefinition {
+  id: string;
+  target: "block" | "item" | "block_entity" | "entity";
+  rendererKind: string;
+  sourceClass?: string;
+  sourceMethod?: string;
+  sourcePath?: string;
+  textures: string[];
+  modelLayerIds: string[];
+  geometrySource?: string;
+  fallbackStrategy?: string;
+  source: RenderProvenance;
+}
+
+export interface RenderValidationIssue {
+  code: string;
+  message: string;
+  id?: string;
+  sourcePath?: string;
+  severity: "error" | "warning";
+}
+
+export interface RenderValidationReport {
+  generatedAt: string;
+  status: "passed" | "failed";
+  fixtureIds: string[];
+  counts: Record<string, number>;
+  issues: RenderValidationIssue[];
+}
+
+export interface MinecraftRenderDataset {
+  version: string;
+  generatedAt: string;
+  blocks: BlockDefinition[];
+  blockstates: BlockstateRenderDefinition[];
+  blockModels: ResolvedRenderModel[];
+  itemModels: ResolvedRenderModel[];
+  itemDisplays: ClientItemRenderDefinition[];
+  textures: TextureRenderDefinition[];
+  atlases: AtlasRenderDefinition[];
+  renderLayers: RenderLayerDefinition[];
+  tints: TintDefinition[];
+  entities: EntityRenderDefinition[];
+  entityModels: MobModelDefinition[];
+  entityRenderers: EntityRendererDefinition[];
+  specialRenderers: SpecialRendererDefinition[];
+  validation?: RenderValidationReport;
 }
 export interface MinecraftWikiMobSoundFile {
   pageId: number;
@@ -580,6 +784,7 @@ export interface VersionDataset {
   mobSounds: MobSoundDefinition[];
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
+  renderData?: MinecraftRenderDataset;
   mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
   resourcePack?: ResourcePackDefinition;
 }
