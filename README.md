@@ -61,7 +61,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `models.json`: model parent chains and texture references
 - `textures.json` plus `images/`: texture metadata and exported PNG files
 - `mob-images.json` plus `mob-images/`: mob image metadata and exported representative entity PNG files
-- `mob-models.json`: source-derived mob model layers with exact cube geometry, pivots, rotations, texture sizes, and per-face UV rectangles for 3D rendering
+- `mob-models.json`: source-derived mob model layers with exact cube geometry, pivots, rotations, texture sizes, renderer texture assets, and per-face UV rectangles for 3D rendering
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
@@ -83,6 +83,12 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `placement: "nether"` and `placement: "end"` separate non-overworld dimension biomes from overworld surface and cave flows.
 
 For automation, prefer `dataset.json` when you want everything in one read, and prefer the per-file JSON outputs when you only need one collection.
+
+### 3D Renderer Consumer Contract
+
+For block rendering, load `blocks.json`, `models.json`, and `textures.json`. Each block keeps the raw vanilla blockstate JSON, each model keeps its raw vanilla model JSON plus parent/texture references, and every texture has a dataset-relative `imagePath` under `images/`.
+
+For mob rendering, load `mob-models.json` and `textures.json`. Each mob model entry includes renderer-discovered `textureAssets` with both the original `sourcePath` and served `imagePath`, plus baked layer parts, cubes, pivots, rotations, texture dimensions, and per-face pixel/normalized UV rectangles. Layers that cannot be derived from static client source are marked `partial` or `unresolved` with warnings instead of being silently omitted.
 
 If you consume `mc-datahub` from another TypeScript project, you can import the dataset shapes as a typed contract instead of re-declaring them: `import type { VersionDataset } from "mc-datahub"` (or `"mc-datahub/types"`). The build emits `.d.ts` declarations for the whole public surface.
 

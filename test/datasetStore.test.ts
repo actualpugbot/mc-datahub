@@ -80,7 +80,17 @@ describe("dataset store", () => {
           ],
         },
       ],
-      mobModels: [],
+      mobModels: [
+        {
+          id: "minecraft:allay",
+          localId: "allay",
+          displayName: "Allay",
+          modelLayers: ["allay"],
+          texturePaths: ["assets/minecraft/textures/entity/allay/allay.png"],
+          textureAssets: [],
+          layers: [],
+        },
+      ],
       mobSounds: [],
       mobSoundMinecraftWiki: {
         source: "minecraft.wiki",
@@ -116,18 +126,21 @@ describe("dataset store", () => {
     await store.saveDataset(dataset, archive);
 
     const exportedImage = await fs.readFile(join(root, "datasets/25w14a/images/block/oak_planks.png"));
+    const exportedMobModelTexture = await fs.readFile(join(root, "datasets/25w14a/images/entity/allay/allay.png"));
     const exportedMobImage = await fs.readFile(join(root, "datasets/25w14a/mob-images/allay/allay.png"));
     const generatedMobImage = await fs.readFile(join(root, "datasets/25w14a/mob-images/generated/phantom.png"));
     const exportedMobSoundWiki = JSON.parse(
       await fs.readFile(join(root, "datasets/25w14a/mob-sounds-minecraft-wiki.json"), "utf8"),
     ) as VersionDataset["mobSoundMinecraftWiki"];
     expect(exportedImage.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(true);
+    expect(exportedMobModelTexture.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]))).toBe(true);
     expect(exportedMobImage.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d]))).toBe(true);
     expect(decodePng(generatedMobImage)).toMatchObject({ width: 16, height: 16 });
     expect(exportedMobSoundWiki?.categories[0]?.id).toBe("allay");
 
     const loaded = await store.loadDataset("25w14a");
     expect(loaded.textures[0]?.imagePath).toBe("images/block/oak_planks.png");
+    expect(loaded.mobModels[0]?.textureAssets[0]?.imagePath).toBe("images/entity/allay/allay.png");
     expect(loaded.mobImages[0]?.imagePath).toBe("mob-images/allay/allay.png");
     expect(loaded.mobSoundMinecraftWiki?.categories[0]?.id).toBe("allay");
   });

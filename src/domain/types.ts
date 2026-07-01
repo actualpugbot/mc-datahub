@@ -311,6 +311,12 @@ export interface MobModelLayerDefinition {
   warnings: string[];
 }
 
+export interface MobModelTextureDefinition {
+  id: string;
+  sourcePath: string;
+  imagePath: string;
+}
+
 export interface MobModelDefinition {
   id: string;
   localId: string;
@@ -318,6 +324,7 @@ export interface MobModelDefinition {
   rendererClass?: string;
   modelLayers: string[];
   texturePaths: string[];
+  textureAssets: MobModelTextureDefinition[];
   layers: MobModelLayerDefinition[];
 }
 export interface MinecraftWikiMobSoundFile {

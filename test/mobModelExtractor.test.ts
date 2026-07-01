@@ -82,6 +82,13 @@ describe("mob model extractor", () => {
       rendererClass: "CowRenderer",
       modelLayers: ["cow"],
       texturePaths: ["assets/minecraft/textures/entity/cow/cow.png"],
+      textureAssets: [
+        {
+          id: "minecraft:entity/cow/cow",
+          sourcePath: "assets/minecraft/textures/entity/cow/cow.png",
+          imagePath: "images/entity/cow/cow.png",
+        },
+      ],
     });
     const layer = model?.layers[0];
     expect(layer).toMatchObject({
@@ -101,6 +108,63 @@ describe("mob model extractor", () => {
 
     const leftLeg = layer?.root?.children.find((part) => part.name === "left_hind_leg");
     expect(leftLeg?.cubes[0]?.mirror).toBe(true);
+  });
+
+  test("follows inherited mesh factories and chained root part additions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mc-datahub-mob-model-inherited-"));
+    await writeJava(root, "net/minecraft/client/renderer/entity/EntityRenderers.java", [
+      "package net.minecraft.client.renderer.entity;",
+      "public class EntityRenderers {",
+      "  static { register(EntityTypes.COW, CowRenderer::new); }",
+      "}",
+    ]);
+    await writeJava(root, "net/minecraft/client/renderer/entity/CowRenderer.java", [
+      "package net.minecraft.client.renderer.entity;",
+      "public class CowRenderer {",
+      "  public CowRenderer(EntityRendererProvider.Context context) {",
+      "    new CowModel(context.bakeLayer(ModelLayers.COW));",
+      "  }",
+      '  static final Identifier TEXTURE = Identifier.withDefaultNamespace("textures/entity/cow/cow.png");',
+      "}",
+    ]);
+    await writeJava(root, "net/minecraft/client/model/geom/LayerDefinitions.java", [
+      "package net.minecraft.client.model.geom;",
+      "public class LayerDefinitions {",
+      "  public static Map<ModelLayerLocation, LayerDefinition> createRoots() {",
+      "    Builder<ModelLayerLocation, LayerDefinition> result = ImmutableMap.builder();",
+      "    result.put(ModelLayers.COW, ColdCowModel.createBodyLayer());",
+      "    return result.build();",
+      "  }",
+      "}",
+    ]);
+    await writeJava(root, "net/minecraft/client/model/animal/cow/CowModel.java", [
+      "package net.minecraft.client.model.animal.cow;",
+      "public class CowModel {",
+      "  public static MeshDefinition createBaseCowModel() {",
+      "    MeshDefinition mesh = new MeshDefinition();",
+      "    PartDefinition root = mesh.getRoot();",
+      '    root.addOrReplaceChild("head", CubeListBuilder.create().texOffs(0, 0).addBox(-4.0F, -4.0F, -6.0F, 8.0F, 8.0F, 6.0F), PartPose.offset(0.0F, 4.0F, -8.0F));',
+      "    return mesh;",
+      "  }",
+      "}",
+    ]);
+    await writeJava(root, "net/minecraft/client/model/animal/cow/ColdCowModel.java", [
+      "package net.minecraft.client.model.animal.cow;",
+      "public class ColdCowModel extends CowModel {",
+      "  public static LayerDefinition createBodyLayer() {",
+      "    MeshDefinition mesh = createBaseCowModel();",
+      '    mesh.getRoot().addOrReplaceChild("body", CubeListBuilder.create().texOffs(18, 4).addBox(-6.0F, -10.0F, -7.0F, 12.0F, 18.0F, 10.0F), PartPose.offset(0.0F, 5.0F, 2.0F));',
+      "    return LayerDefinition.create(mesh, 64, 64);",
+      "  }",
+      "}",
+    ]);
+
+    const [model] = await new MobModelExtractor(createConsoleLogger(false)).extract([cowMob()], root);
+    const layer = model?.layers[0];
+
+    expect(layer?.status).toBe("baked");
+    expect(layer?.warnings).toEqual([]);
+    expect(layer?.root?.children.map((part) => part.name)).toEqual(["body", "head"]);
   });
 });
 

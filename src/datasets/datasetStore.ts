@@ -42,6 +42,7 @@ export class DatasetStore {
 
     if (source) {
       await this.exportTextureImages(directory, dataset.textures, source);
+      await this.exportMobModelTextureImages(directory, dataset.mobModels, source);
       await this.exportMobImages(directory, dataset.mobImages, source);
     }
 
@@ -123,7 +124,7 @@ export class DatasetStore {
     >(join(directory, "dataset.json"));
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
-    const mobModels = dataset.mobModels ?? (await this.loadMobModelSidecar(directory));
+    const mobModels = this.normalizeMobModelTextureAssets(dataset.mobModels ?? (await this.loadMobModelSidecar(directory)));
 
     return {
       ...dataset,
@@ -191,6 +192,21 @@ export class DatasetStore {
     const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
   }
+
+  private normalizeMobModelTextureAssets(mobModels: MobModelDefinition[]): MobModelDefinition[] {
+    return mobModels.map((mobModel) => ({
+      ...mobModel,
+      textureAssets:
+        mobModel.textureAssets?.length > 0
+          ? mobModel.textureAssets
+          : mobModel.texturePaths.map((sourcePath) => ({
+              id: `minecraft:${sourcePath.replace(/^assets\/minecraft\/textures\//, "").replace(/\.png$/i, "")}`,
+              sourcePath,
+              imagePath: `images/${sourcePath.replace(/^assets\/minecraft\/textures\//, "")}`,
+            })),
+    }));
+  }
+
   async saveDiff(diff: VersionDiff): Promise<string> {
     await ensureDir(this.paths.diffsDir);
     const outputPath = join(this.paths.diffsDir, `${diff.fromVersion}__${diff.toVersion}.json`);
@@ -232,6 +248,36 @@ export class DatasetStore {
       texture.imagePath = imagePath;
       const buffer = await source.readBuffer(texture.sourcePath);
       await writeBufferFile(join(directory, imagePath), buffer);
+    }
+  }
+
+  private async exportMobModelTextureImages(
+    directory: string,
+    mobModels: MobModelDefinition[],
+    source: ArchiveSource,
+  ): Promise<void> {
+    const exportedPaths = new Set<string>();
+
+    for (const mobModel of mobModels) {
+      const textureAssets =
+        mobModel.textureAssets?.length > 0
+          ? mobModel.textureAssets
+          : mobModel.texturePaths.map((sourcePath) => ({
+              id: `minecraft:${sourcePath.replace(/^assets\/minecraft\/textures\//, "").replace(/\.png$/i, "")}`,
+              sourcePath,
+              imagePath: `images/${sourcePath.replace(/^assets\/minecraft\/textures\//, "")}`,
+            }));
+
+      mobModel.textureAssets = textureAssets;
+      for (const textureAsset of textureAssets) {
+        if (exportedPaths.has(textureAsset.imagePath)) {
+          continue;
+        }
+
+        const buffer = await source.readBuffer(textureAsset.sourcePath);
+        await writeBufferFile(join(directory, textureAsset.imagePath), buffer);
+        exportedPaths.add(textureAsset.imagePath);
+      }
     }
   }
 

@@ -8,12 +8,14 @@ import type {
   MobModelFaceName,
   MobModelLayerDefinition,
   MobModelPartDefinition,
+  MobModelTextureDefinition,
   MobSoundDefinition,
 } from "../domain/types.js";
 
 const ENTITY_RENDERERS_SOURCE_PATH = "net/minecraft/client/renderer/entity/EntityRenderers.java";
 const ENTITY_RENDERER_SOURCE_DIR = "net/minecraft/client/renderer/entity";
 const MODEL_SOURCE_DIR = "net/minecraft/client/model";
+const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const LAYER_DEFINITIONS_SOURCE_PATH = "net/minecraft/client/model/geom/LayerDefinitions.java";
 const RENDERER_TEXTURE_PATTERN = /textures\/entity\/[a-z0-9_./-]+\.png/gi;
 const MODEL_LAYER_PATTERN = /ModelLayers\.([A-Z0-9_]+)/g;
@@ -52,6 +54,11 @@ interface BuilderState {
   texU: number;
   texV: number;
   mirror: boolean;
+}
+
+interface MeshFactoryReference {
+  modelClass?: string;
+  methodName: string;
 }
 
 export class MobModelExtractor {
@@ -94,6 +101,7 @@ export class MobModelExtractor {
         rendererClass,
         modelLayers: rendererData.modelLayers,
         texturePaths: rendererData.texturePaths,
+        textureAssets: rendererData.texturePaths.map(toMobModelTextureAsset),
         layers,
       });
     }
@@ -260,30 +268,31 @@ export class MobModelExtractor {
       rawExpression: expression.expression,
       warnings,
     };
-    const baked = bakeModelSource(source, expression.modelMethod, context);
+    const baked = await bakeModelSource(source, expression.modelMethod, context, modelSourcePaths);
     return baked;
   }
 }
 
-export function bakeModelSource(source: string, methodName: string, context: BakeContext): MobModelLayerDefinition {
+export async function bakeModelSource(
+  source: string,
+  methodName: string,
+  context: BakeContext,
+  modelSourcePaths = new Map<string, string>(),
+): Promise<MobModelLayerDefinition> {
   const rootMethod = extractMethodBody(source, methodName);
   if (!rootMethod) {
     return unresolvedLayer(context, `Could not find static method ${methodName}.`);
   }
 
   const textureSize = parseTextureSize(rootMethod.body) ?? parseTextureSize(context.rawExpression);
-  const meshMethod = parseMeshFactoryMethod(rootMethod.body);
-  const meshBody = meshMethod ? extractMethodBody(source, meshMethod)?.body : undefined;
-  const body = meshBody ?? rootMethod.body;
+  const bodyResult = await collectMethodBodies(source, methodName, context.modelClass, modelSourcePaths, new Set<string>());
+  const body = bodyResult.body;
   const parts = parseParts(body, textureSize ?? [64, 64]);
   const root = buildPartTree(parts);
-  const warnings = [...context.warnings];
+  const warnings = [...context.warnings, ...bodyResult.warnings];
 
   if (!textureSize) {
     warnings.push("Could not resolve texture size; defaulted face UV normalization to 64x64.");
-  }
-  if (meshMethod && !meshBody) {
-    warnings.push(`Could not follow mesh factory method ${meshMethod}; parsed ${methodName} only.`);
   }
   if (root.children.length === 0 && root.cubes.length === 0) {
     warnings.push("No model parts were parsed from the layer method.");
@@ -351,6 +360,12 @@ function parseParts(body: string, textureSize: [number, number]): ParsedPart[] {
   partVariables.set("root", rootPart);
 
   for (const statement of splitStatements(body)) {
+    const rootAlias = parseRootPartAlias(statement);
+    if (rootAlias) {
+      partVariables.set(rootAlias, rootPart);
+      continue;
+    }
+
     if (!statement.includes(".addOrReplaceChild(")) {
       continue;
     }
@@ -360,7 +375,7 @@ function parseParts(body: string, textureSize: [number, number]): ParsedPart[] {
       continue;
     }
 
-    const parent = partVariables.get(call.parentVariable) ?? rootPart;
+    const parent = resolveParentPart(call.parentExpression, partVariables, rootPart);
     const builderExpression = builderVariables.get(call.builderExpression) ?? call.builderExpression;
     const part: ParsedPart = {
       name: call.name,
@@ -439,13 +454,13 @@ function parseBuilderVariables(body: string): Map<string, string> {
 function parseAddChildStatement(statement: string):
   | {
       assignedVariable?: string;
-      parentVariable: string;
+      parentExpression: string;
       name: string;
       builderExpression: string;
       pose: { pivot: Vec3; rotation: Vec3 };
     }
   | undefined {
-  const match = statement.match(/^(?:(?:PartDefinition\s+)?(\w+)\s*=\s*)?(\w+)\.addOrReplaceChild\(/);
+  const match = statement.match(/^(?:(?:PartDefinition\s+)?(\w+)\s*=\s*)?(.+?)\s*\.\s*addOrReplaceChild\s*\(/);
   if (!match?.[2]) {
     return undefined;
   }
@@ -464,11 +479,25 @@ function parseAddChildStatement(statement: string):
 
   return {
     assignedVariable: match[1],
-    parentVariable: match[2],
+    parentExpression: match[2].trim(),
     name,
     builderExpression: args[1].trim(),
     pose: parsePartPose(args[2]),
   };
+}
+
+function parseRootPartAlias(statement: string): string | undefined {
+  const match = statement.match(/^PartDefinition\s+(\w+)\s*=\s*\w+\.getRoot\(\)$/);
+  return match?.[1];
+}
+
+function resolveParentPart(parentExpression: string, partVariables: Map<string, ParsedPart>, rootPart: ParsedPart): ParsedPart {
+  const normalized = parentExpression.replace(/\s+/g, "");
+  if (normalized.endsWith(".getRoot()")) {
+    return rootPart;
+  }
+
+  return partVariables.get(parentExpression.trim()) ?? rootPart;
 }
 
 function parseCubeBuilder(expression: string, textureSize: [number, number]): MobModelCubeDefinition[] {
@@ -627,16 +656,6 @@ function parseTextureSize(source: string): [number, number] | undefined {
   return [Number.parseInt(match[1], 10), Number.parseInt(match[2], 10)];
 }
 
-function parseMeshFactoryMethod(source: string): string | undefined {
-  const assignmentMatch = source.match(/MeshDefinition\s+\w+\s*=\s*(\w+)\s*\(/);
-  if (assignmentMatch?.[1]) {
-    return assignmentMatch[1];
-  }
-
-  const returnMatch = source.match(/LayerDefinition\.create\(\s*(\w+)\s*\(/);
-  return returnMatch?.[1];
-}
-
 function extractMethodBody(source: string, methodName: string): { name: string; body: string } | undefined {
   const pattern = new RegExp(
     `(?:public|private|protected)\\s+static\\s+[^{;]+\\b${escapeRegExp(methodName)}\\s*\\([^)]*\\)\\s*\\{`,
@@ -654,6 +673,152 @@ function extractMethodBody(source: string, methodName: string): { name: string; 
   }
 
   return { name: methodName, body: source.slice(openIndex + 1, closeIndex) };
+}
+
+async function collectMethodBodies(
+  source: string,
+  methodName: string,
+  modelClass: string | undefined,
+  modelSourcePaths: Map<string, string>,
+  visited: Set<string>,
+): Promise<{ body: string; warnings: string[] }> {
+  const method = extractMethodBody(source, methodName);
+  if (!method) {
+    return { body: "", warnings: [`Could not find helper method ${methodName}.`] };
+  }
+
+  const key = `${modelClass ?? "<local>"}.${methodName}`;
+  if (visited.has(key)) {
+    return { body: method.body, warnings: [] };
+  }
+  visited.add(key);
+
+  const warnings: string[] = [];
+  const bodies: string[] = [];
+  for (const reference of findMeshFactoryReferences(method.body, methodName)) {
+    const target = await resolveMethodSource(source, reference, modelClass, modelSourcePaths, warnings);
+    if (!target) {
+      continue;
+    }
+
+    const targetKey = `${target.modelClass}.${reference.methodName}`;
+    if (visited.has(targetKey)) {
+      continue;
+    }
+
+    const nested = await collectMethodBodies(target.source, reference.methodName, target.modelClass, modelSourcePaths, visited);
+    bodies.push(nested.body);
+    warnings.push(...nested.warnings);
+  }
+
+  bodies.push(method.body);
+  return { body: bodies.filter(Boolean).join("\n"), warnings };
+}
+
+function findMeshFactoryReferences(source: string, currentMethodName: string): MeshFactoryReference[] {
+  const references: MeshFactoryReference[] = [];
+  const pattern = /\b(?:MeshDefinition\s+\w+\s*=\s*|LayerDefinition\.create\(\s*|return\s+)(?:(\w+)\.)?(\w+)\s*\(/g;
+
+  for (const match of source.matchAll(pattern)) {
+    addMeshFactoryReference(references, match[1], match[2], currentMethodName);
+  }
+
+  const layerCreatePattern = /LayerDefinition\.create\(\s*(?:(\w+)\.)?(\w+)\s*\(/g;
+  for (const match of source.matchAll(layerCreatePattern)) {
+    addMeshFactoryReference(references, match[1], match[2], currentMethodName);
+  }
+
+  return references;
+}
+
+function addMeshFactoryReference(
+  references: MeshFactoryReference[],
+  modelClass: string | undefined,
+  methodName: string | undefined,
+  currentMethodName: string,
+): void {
+  if (!methodName || methodName === currentMethodName || modelClass === "LayerDefinition" || modelClass === "MeshTransformer") {
+    return;
+  }
+
+  if (!methodName.startsWith("create")) {
+    return;
+  }
+
+  if (references.some((reference) => reference.modelClass === modelClass && reference.methodName === methodName)) {
+    return;
+  }
+
+  references.push({ modelClass, methodName });
+}
+
+async function readModelSource(
+  modelClass: string,
+  modelSourcePaths: Map<string, string>,
+  warnings: string[],
+): Promise<string | undefined> {
+  const sourcePath = modelSourcePaths.get(modelClass);
+  if (!sourcePath) {
+    warnings.push(`Could not find source for helper model class ${modelClass}.`);
+    return undefined;
+  }
+
+  try {
+    return await fs.readFile(sourcePath, "utf8");
+  } catch (error) {
+    warnings.push(`Could not read source for helper model class ${modelClass}: ${(error as Error).message}`);
+    return undefined;
+  }
+}
+
+async function resolveMethodSource(
+  currentSource: string,
+  reference: MeshFactoryReference,
+  currentClass: string | undefined,
+  modelSourcePaths: Map<string, string>,
+  warnings: string[],
+): Promise<{ modelClass: string; source: string } | undefined> {
+  if (reference.modelClass) {
+    const source =
+      reference.modelClass === currentClass
+        ? currentSource
+        : await readModelSource(reference.modelClass, modelSourcePaths, warnings);
+    return source ? { modelClass: reference.modelClass, source } : undefined;
+  }
+
+  if (!currentClass) {
+    return undefined;
+  }
+
+  if (extractMethodBody(currentSource, reference.methodName)) {
+    return { modelClass: currentClass, source: currentSource };
+  }
+
+  const superclass = parseSuperclassName(currentSource);
+  if (!superclass) {
+    warnings.push(`Could not find helper method ${reference.methodName} on ${currentClass}.`);
+    return undefined;
+  }
+
+  const superclassSource = await readModelSource(superclass, modelSourcePaths, warnings);
+  if (!superclassSource) {
+    return undefined;
+  }
+
+  if (extractMethodBody(superclassSource, reference.methodName)) {
+    return { modelClass: superclass, source: superclassSource };
+  }
+
+  return resolveMethodSource(superclassSource, reference, superclass, modelSourcePaths, warnings);
+}
+
+function toMobModelTextureAsset(sourcePath: string): MobModelTextureDefinition {
+  const relativePath = sourcePath.startsWith(TEXTURE_PREFIX) ? sourcePath.slice(TEXTURE_PREFIX.length) : sourcePath;
+  return {
+    id: `minecraft:${relativePath.replace(/\.png$/i, "")}`,
+    sourcePath,
+    imagePath: `images/${relativePath}`,
+  };
 }
 
 function parseCall(expression: string): { name: string; args: string[] } | undefined {
