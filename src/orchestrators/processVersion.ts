@@ -97,6 +97,7 @@ export class ProcessVersionWorkflow {
     const mobSoundData = await this.mobSoundExtractor.extract(manifestEntry.id, metadata, sources, decompiledClientRoot);
     const mobImages = await this.mobImageExtractor.extract(mobSoundData.mobSounds, sources, decompiledClientRoot);
     const mobModels = await this.mobModelExtractor.extract(mobSoundData.mobSounds, decompiledClientRoot);
+    const blockEntityModels = await this.mobModelExtractor.extractBlockEntityModels(decompiledClientRoot);
     const sourceDerived = await this.sourceExtractor.extract(decompiledClientRoot);
     dataset.provenance.mappingProvider = options.mappingProvider;
     dataset.itemStats = sourceDerived.itemStats;
@@ -104,6 +105,7 @@ export class ProcessVersionWorkflow {
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.mobModels = mobModels;
+    dataset.blockEntityModels = blockEntityModels;
     dataset.renderData = await this.renderDataExtractor.extract(manifestEntry.id, sources, {
       translations: dataset.translations,
       blocks: dataset.blocks,

@@ -781,6 +781,8 @@ export interface VersionDataset {
   biomes: BiomeDefinition[];
   mobImages: MobImageDefinition[];
   mobModels: MobModelDefinition[];
+  /** Baked LayerDefinitions geometry for block entities without data-driven block models (chest, shulker box, conduit, banner, decorated pot, bell). Optional so older datasets still load. */
+  blockEntityModels?: MobModelDefinition[];
   mobSounds: MobSoundDefinition[];
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;

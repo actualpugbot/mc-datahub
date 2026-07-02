@@ -15,6 +15,7 @@ import type {
 const ENTITY_RENDERERS_SOURCE_PATH = "net/minecraft/client/renderer/entity/EntityRenderers.java";
 const ENTITY_RENDERER_SOURCE_DIR = "net/minecraft/client/renderer/entity";
 const MODEL_SOURCE_DIR = "net/minecraft/client/model";
+const BLOCK_ENTITY_RENDERER_SOURCE_DIR = "net/minecraft/client/renderer/blockentity";
 const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const LAYER_DEFINITIONS_SOURCE_PATH = "net/minecraft/client/model/geom/LayerDefinitions.java";
 const RENDERER_TEXTURE_PATTERN = /textures\/entity\/[a-z0-9_./-]+\.png/gi;
@@ -24,6 +25,72 @@ const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*c
 const FACE_NAMES = ["down", "up", "west", "north", "east", "south"] as const;
 
 type Vec3 = [number, number, number];
+
+interface BlockEntityModelSpec {
+  id: string;
+  localId: string;
+  displayName: string;
+  modelLayers: string[];
+  texturePaths: string[];
+}
+
+/**
+ * Block entities whose geometry is hardcoded in LayerDefinitions rather
+ * than data-driven block-model JSON (beds/signs/bells are data-driven as
+ * of 26.x and resolve through the normal block-model pipeline).
+ */
+const BLOCK_ENTITY_MODEL_SPECS: BlockEntityModelSpec[] = [
+  {
+    id: "minecraft:chest",
+    localId: "chest",
+    displayName: "Chest",
+    modelLayers: ["chest"],
+    texturePaths: ["assets/minecraft/textures/entity/chest/normal.png"],
+  },
+  {
+    id: "minecraft:shulker_box",
+    localId: "shulker_box",
+    displayName: "Shulker Box",
+    modelLayers: ["shulker_box"],
+    texturePaths: ["assets/minecraft/textures/entity/shulker/shulker.png"],
+  },
+  {
+    id: "minecraft:conduit",
+    localId: "conduit",
+    displayName: "Conduit",
+    modelLayers: ["conduit_shell", "conduit_eye", "conduit_cage", "conduit_wind"],
+    texturePaths: [
+      "assets/minecraft/textures/entity/conduit/base.png",
+      "assets/minecraft/textures/entity/conduit/closed_eye.png",
+      "assets/minecraft/textures/entity/conduit/cage.png",
+      "assets/minecraft/textures/entity/conduit/wind.png",
+    ],
+  },
+  {
+    id: "minecraft:banner",
+    localId: "banner",
+    displayName: "Banner",
+    modelLayers: ["standing_banner", "standing_banner_flag", "wall_banner", "wall_banner_flag"],
+    texturePaths: ["assets/minecraft/textures/entity/banner/base.png"],
+  },
+  {
+    id: "minecraft:decorated_pot",
+    localId: "decorated_pot",
+    displayName: "Decorated Pot",
+    modelLayers: ["decorated_pot_base", "decorated_pot_sides"],
+    texturePaths: [
+      "assets/minecraft/textures/entity/decorated_pot/decorated_pot_base.png",
+      "assets/minecraft/textures/entity/decorated_pot/decorated_pot_side.png",
+    ],
+  },
+  {
+    id: "minecraft:bell",
+    localId: "bell",
+    displayName: "Bell",
+    modelLayers: ["bell"],
+    texturePaths: ["assets/minecraft/textures/entity/bell/bell_body.png"],
+  },
+];
 
 interface ParsedLayerExpression {
   id: string;
@@ -108,6 +175,42 @@ export class MobModelExtractor {
 
     this.logger.debug(`Resolved ${results.length} mob model definitions.`);
     return results.sort((left, right) => left.displayName.localeCompare(right.displayName));
+  }
+
+  /**
+   * Bakes the ModelPart geometry of block entities that have no data-driven
+   * block model (their shapes live in LayerDefinitions like mob models do).
+   * Same layer schema as mob models so consumers can share the renderer.
+   */
+  async extractBlockEntityModels(decompiledClientRoot: string): Promise<MobModelDefinition[]> {
+    if (!(await fileExists(decompiledClientRoot))) {
+      return [];
+    }
+
+    const [layerExpressions, modelSourcePaths] = await Promise.all([
+      this.loadLayerExpressions(decompiledClientRoot),
+      this.indexModelSources(decompiledClientRoot),
+    ]);
+    const results: MobModelDefinition[] = [];
+
+    for (const spec of BLOCK_ENTITY_MODEL_SPECS) {
+      const layers: MobModelLayerDefinition[] = [];
+      for (const layerId of spec.modelLayers) {
+        layers.push(await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot));
+      }
+      results.push({
+        id: spec.id,
+        localId: spec.localId,
+        displayName: spec.displayName,
+        modelLayers: spec.modelLayers,
+        texturePaths: spec.texturePaths,
+        textureAssets: spec.texturePaths.map(toMobModelTextureAsset),
+        layers,
+      });
+    }
+
+    this.logger.debug(`Resolved ${results.length} block-entity model definitions.`);
+    return results;
   }
 
   private async loadRendererClassesByMob(decompiledClientRoot: string): Promise<Map<string, string>> {
@@ -212,16 +315,22 @@ export class MobModelExtractor {
   }
 
   private async indexModelSources(decompiledClientRoot: string): Promise<Map<string, string>> {
-    const root = join(decompiledClientRoot, MODEL_SOURCE_DIR);
     const paths = new Map<string, string>();
-    if (!(await fileExists(root))) {
-      return paths;
-    }
 
-    for (const path of await listJavaFiles(root)) {
-      const normalizedPath = path.replace(/\\/g, "/");
-      const className = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1).replace(/\.java$/, "");
-      paths.set(className, path);
+    // LayerDefinitions references mesh factories from both trees (e.g.
+    // ConduitRenderer.createShellLayer()). Index the block-entity renderers
+    // first so net/minecraft/client/model wins simple-name collisions.
+    for (const sourceDir of [BLOCK_ENTITY_RENDERER_SOURCE_DIR, MODEL_SOURCE_DIR]) {
+      const root = join(decompiledClientRoot, sourceDir);
+      if (!(await fileExists(root))) {
+        continue;
+      }
+
+      for (const path of await listJavaFiles(root)) {
+        const normalizedPath = path.replace(/\\/g, "/");
+        const className = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1).replace(/\.java$/, "");
+        paths.set(className, path);
+      }
     }
 
     return paths;

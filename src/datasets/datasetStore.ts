@@ -43,7 +43,7 @@ export class DatasetStore {
 
     if (source) {
       await this.exportTextureImages(directory, dataset.textures, source);
-      await this.exportMobModelTextureImages(directory, dataset.mobModels, source);
+      await this.exportMobModelTextureImages(directory, [...dataset.mobModels, ...(dataset.blockEntityModels ?? [])], source);
       await this.exportMobImages(directory, dataset.mobImages, source);
     }
 
@@ -121,6 +121,11 @@ export class DatasetStore {
         generatedAt: dataset.generatedAt,
         mobs: dataset.mobModels,
       }),
+      writeJsonFile(join(directory, "block-entity-models.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        blockEntities: dataset.blockEntityModels ?? [],
+      }),
       writeJsonFile(join(directory, "mob-sounds.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -161,6 +166,9 @@ export class DatasetStore {
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
     const mobModels = this.normalizeMobModelTextureAssets(dataset.mobModels ?? (await this.loadMobModelSidecar(directory)));
+    const blockEntityModels = this.normalizeMobModelTextureAssets(
+      dataset.blockEntityModels ?? (await this.loadBlockEntityModelSidecar(directory)),
+    );
     const renderData = dataset.renderData ?? (await this.loadRenderDataSidecar(directory, dataset.version, dataset.generatedAt));
 
     return {
@@ -181,6 +189,7 @@ export class DatasetStore {
       banners,
       mobImages: dataset.mobImages ?? [],
       mobModels,
+      blockEntityModels,
       mobSounds: dataset.mobSounds ?? [],
       renderData,
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
@@ -229,6 +238,16 @@ export class DatasetStore {
 
     const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
+  }
+
+  private async loadBlockEntityModelSidecar(directory: string): Promise<MobModelDefinition[]> {
+    const path = join(directory, "block-entity-models.json");
+    if (!(await fileExists(path))) {
+      return [];
+    }
+
+    const payload = await readJsonFile<{ blockEntities?: MobModelDefinition[] } | MobModelDefinition[]>(path);
+    return Array.isArray(payload) ? payload : (payload.blockEntities ?? []);
   }
 
   private async loadRenderDataSidecar(
