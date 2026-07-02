@@ -136,8 +136,9 @@ export class MobModelExtractor {
       return [];
     }
 
-    const [rendererClassesByMob, layerExpressions, modelSourcePaths] = await Promise.all([
+    const [rendererClassesByMob, registrationLayersByMob, layerExpressions, modelSourcePaths] = await Promise.all([
       this.loadRendererClassesByMob(decompiledClientRoot),
+      this.loadRegistrationLayersByMob(decompiledClientRoot),
       this.loadLayerExpressions(decompiledClientRoot),
       this.indexModelSources(decompiledClientRoot),
     ]);
@@ -149,9 +150,15 @@ export class MobModelExtractor {
       const rendererData = rendererClass
         ? await this.collectRendererData(rendererClass, decompiledClientRoot, new Set<string>())
         : { modelLayers: [] as string[], texturePaths: [] as string[] };
+      // Some renderers (squid, llama, piglin) receive their ModelLayers as
+      // constructor arguments inside the EntityRenderers registration, so
+      // the renderer source itself never mentions them.
+      const modelLayers = Array.from(
+        new Set([...rendererData.modelLayers, ...(registrationLayersByMob.get(mob.localId) ?? [])]),
+      ).sort();
       const layers: MobModelLayerDefinition[] = [];
 
-      for (const layerId of rendererData.modelLayers) {
+      for (const layerId of modelLayers) {
         const cacheKey = `${layerId}`;
         let layer = bakedLayers.get(cacheKey);
         if (!layer) {
@@ -166,7 +173,7 @@ export class MobModelExtractor {
         localId: mob.localId,
         displayName: mob.displayName,
         rendererClass,
-        modelLayers: rendererData.modelLayers,
+        modelLayers,
         texturePaths: rendererData.texturePaths,
         textureAssets: rendererData.texturePaths.map(toMobModelTextureAsset),
         layers,
@@ -211,6 +218,52 @@ export class MobModelExtractor {
 
     this.logger.debug(`Resolved ${results.length} block-entity model definitions.`);
     return results;
+  }
+
+  /**
+   * ModelLayers referenced inside each EntityRenderers registration call
+   * (e.g. `register(SQUID, ctx -> new SquidRenderer(ctx, new SquidModel(
+   * ctx.bakeLayer(ModelLayers.SQUID)), ...))`) keyed by entity local id.
+   */
+  private async loadRegistrationLayersByMob(decompiledClientRoot: string): Promise<Map<string, string[]>> {
+    const sourcePath = join(decompiledClientRoot, ENTITY_RENDERERS_SOURCE_PATH);
+    if (!(await fileExists(sourcePath))) {
+      return new Map();
+    }
+
+    const source = await fs.readFile(sourcePath, "utf8");
+    const layersByMob = new Map<string, string[]>();
+    const registerPattern = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,/g;
+
+    for (const match of source.matchAll(registerPattern)) {
+      const entityType = match[1];
+      if (!entityType || match.index === undefined) {
+        continue;
+      }
+
+      const openIndex = source.indexOf("(", match.index);
+      if (openIndex < 0) {
+        continue;
+      }
+      const closeIndex = findMatching(source, openIndex, "(", ")");
+      if (closeIndex < 0) {
+        continue;
+      }
+
+      const registration = source.slice(openIndex, closeIndex + 1);
+      const layers = new Set<string>();
+      MODEL_LAYER_PATTERN.lastIndex = 0;
+      for (const layerMatch of registration.matchAll(MODEL_LAYER_PATTERN)) {
+        if (layerMatch[1]) {
+          layers.add(layerMatch[1].toLowerCase());
+        }
+      }
+      if (layers.size > 0) {
+        layersByMob.set(entityType.toLowerCase(), Array.from(layers).sort());
+      }
+    }
+
+    return layersByMob;
   }
 
   private async loadRendererClassesByMob(decompiledClientRoot: string): Promise<Map<string, string>> {
