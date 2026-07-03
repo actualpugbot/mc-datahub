@@ -25,6 +25,23 @@ const MODEL_LAYER_PATTERN = /ModelLayers\.([A-Z0-9_]+)/g;
 const REGISTER_METHOD_REFERENCE_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
 const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
 
+/** Generic layers every humanoid instantiates; following them would attach player-head/armor/held-item models to each mob. */
+const GENERIC_RENDER_LAYERS = new Set([
+  "ArrowLayer",
+  "BeeStingerLayer",
+  "CapeLayer",
+  "CustomHeadLayer",
+  "Deadmau5EarsLayer",
+  "EquipmentLayerRenderer",
+  "HumanoidArmorLayer",
+  "ItemInHandLayer",
+  "ParrotOnShoulderLayer",
+  "PlayerItemInHandLayer",
+  "SpinAttackEffectLayer",
+  "StuckInBodyLayer",
+  "WingsLayer",
+]);
+
 type Vec3 = [number, number, number];
 
 interface BlockEntityModelSpec {
@@ -139,12 +156,14 @@ export class MobModelExtractor {
       return [];
     }
 
-    const [rendererClassesByMob, registrationLayersByMob, layerExpressions, modelSourcePaths] = await Promise.all([
-      this.loadRendererClassesByMob(decompiledClientRoot),
-      this.loadRegistrationLayersByMob(decompiledClientRoot),
-      this.loadLayerExpressions(decompiledClientRoot),
-      this.indexModelSources(decompiledClientRoot),
-    ]);
+    const [rendererClassesByMob, registrationLayersByMob, layerExpressions, modelSourcePaths, rendererSourcePaths] =
+      await Promise.all([
+        this.loadRendererClassesByMob(decompiledClientRoot),
+        this.loadRegistrationLayersByMob(decompiledClientRoot),
+        this.loadLayerExpressions(decompiledClientRoot),
+        this.indexModelSources(decompiledClientRoot),
+        this.indexRendererSources(decompiledClientRoot),
+      ]);
     const executor = new ModelSourceExecutor(modelSourcePaths);
     const bakedLayers = new Map<string, MobModelLayerDefinition>();
     const results: MobModelDefinition[] = [];
@@ -152,7 +171,7 @@ export class MobModelExtractor {
     for (const mob of mobs) {
       const rendererClass = rendererClassesByMob.get(mob.localId);
       const rendererData = rendererClass
-        ? await this.collectRendererData(rendererClass, decompiledClientRoot, new Set<string>())
+        ? await this.collectRendererData(rendererClass, rendererSourcePaths, new Set<string>())
         : { modelLayers: [] as string[], texturePaths: [] as string[] };
       // Some renderers (squid, llama, piglin) receive their ModelLayers as
       // constructor arguments inside the EntityRenderers registration, so
@@ -208,9 +227,7 @@ export class MobModelExtractor {
     for (const spec of BLOCK_ENTITY_MODEL_SPECS) {
       const layers: MobModelLayerDefinition[] = [];
       for (const layerId of spec.modelLayers) {
-        layers.push(
-          await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor),
-        );
+        layers.push(await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor));
       }
       results.push({
         id: spec.id,
@@ -298,7 +315,7 @@ export class MobModelExtractor {
 
   private async collectRendererData(
     rendererClass: string,
-    decompiledClientRoot: string,
+    rendererSourcePaths: Map<string, string>,
     visitedClasses: Set<string>,
   ): Promise<{ modelLayers: string[]; texturePaths: string[] }> {
     const topLevelRendererClass = rendererClass.split(".")[0] ?? rendererClass;
@@ -307,8 +324,8 @@ export class MobModelExtractor {
     }
 
     visitedClasses.add(topLevelRendererClass);
-    const rendererSourcePath = join(decompiledClientRoot, ENTITY_RENDERER_SOURCE_DIR, `${topLevelRendererClass}.java`);
-    if (!(await fileExists(rendererSourcePath))) {
+    const rendererSourcePath = rendererSourcePaths.get(topLevelRendererClass);
+    if (!rendererSourcePath || !(await fileExists(rendererSourcePath))) {
       return { modelLayers: [], texturePaths: [] };
     }
 
@@ -330,17 +347,55 @@ export class MobModelExtractor {
       }
     }
 
+    // Render layers (SheepWoolLayer, SlimeOuterLayer, EnderEyesLayer,
+    // LlamaDecorLayer, ...) hold their own ModelLayers refs and texture
+    // Identifiers; the renderer only does `addLayer(new XLayer(...))`.
+    // Follow instantiated *Layer classes, minus generic equipment/held-item
+    // layers that would drag unrelated player/armor models into every mob.
+    const followups = new Set<string>();
+    for (const match of source.matchAll(/\bnew\s+([A-Z][\w$]*)\s*\(/g)) {
+      const referenced = match[1];
+      if (
+        referenced &&
+        referenced !== topLevelRendererClass &&
+        referenced.endsWith("Layer") &&
+        !GENERIC_RENDER_LAYERS.has(referenced) &&
+        rendererSourcePaths.has(referenced)
+      ) {
+        followups.add(referenced);
+      }
+    }
     const superclass = parseSuperclassName(source);
     if (superclass) {
-      const inherited = await this.collectRendererData(superclass, decompiledClientRoot, visitedClasses);
-      inherited.modelLayers.forEach((layer) => modelLayers.add(layer));
-      inherited.texturePaths.forEach((texture) => texturePaths.add(texture));
+      followups.add(superclass.split(".")[0] ?? superclass);
+    }
+
+    for (const followup of followups) {
+      const collected = await this.collectRendererData(followup, rendererSourcePaths, visitedClasses);
+      collected.modelLayers.forEach((layer) => modelLayers.add(layer));
+      collected.texturePaths.forEach((texture) => texturePaths.add(texture));
     }
 
     return {
       modelLayers: Array.from(modelLayers).sort(),
       texturePaths: Array.from(texturePaths).sort(),
     };
+  }
+
+  /** Simple-name -> path index of the renderer tree (includes entity/layers). */
+  private async indexRendererSources(decompiledClientRoot: string): Promise<Map<string, string>> {
+    const paths = new Map<string, string>();
+    const root = join(decompiledClientRoot, ENTITY_RENDERER_SOURCE_DIR);
+    if (!(await fileExists(root))) {
+      return paths;
+    }
+
+    for (const path of await listJavaFiles(root)) {
+      const normalizedPath = path.replace(/\\/g, "/");
+      const className = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1).replace(/\.java$/, "");
+      paths.set(className, path);
+    }
+    return paths;
   }
 
   private async loadLayerExpressions(decompiledClientRoot: string): Promise<Map<string, ParsedLayerExpression>> {
