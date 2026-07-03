@@ -605,19 +605,94 @@ export interface MinecraftWikiMobSoundAlignment {
   categories: MinecraftWikiMobSoundCategoryAlignment[];
 }
 
+/** Linear level-cost formula used by min_cost/max_cost in enchantment definitions. */
+export interface EnchantmentCostFormula {
+  base: number;
+  perLevelAboveFirst: number;
+}
+
 export interface EnchantmentDefinition {
   id: string;
   descriptionKey?: string;
   description?: string;
+  /** en_us display name resolved from `descriptionKey`. */
+  displayName?: string;
   supportedItems?: string;
   primaryItems?: string;
+  /** Concrete item ids after recursively resolving `supported_items` (tag refs included). */
+  supportedItemIds?: string[];
+  /** Concrete item ids after recursively resolving `primary_items` (tag refs included). */
+  primaryItemIds?: string[];
   maxLevel?: number;
   weight?: number;
   anvilCost?: number;
+  /** Enchanting-table minimum cost formula (`min_cost`). */
+  minCost?: EnchantmentCostFormula;
+  /** Enchanting-table maximum cost formula (`max_cost`). */
+  maxCost?: EnchantmentCostFormula;
   slots: string[];
   exclusiveSet?: string;
+  /** Enchantment ids this one cannot coexist with, resolved from `exclusive_set`. */
+  exclusiveSetIds?: string[];
+  /** Enchantment-registry tags containing this enchantment (curse, treasure, in_enchanting_table, …). */
+  tags?: string[];
   sourcePath: string;
   raw: JsonValue;
+}
+
+/** A `numerator / denominator` ratio parsed from decompiled source arithmetic. */
+export interface AnvilFraction {
+  numerator: number;
+  denominator: number;
+}
+
+/** One bracket of the player XP curve: XP needed to pass a level within [minLevel, nextBracket). */
+export interface AnvilXpBracket {
+  minLevel: number;
+  base: number;
+  perLevelAboveMin: number;
+}
+
+/**
+ * Anvil combine/repair mechanics derived from decompiled client source
+ * (AnvilMenu.java and Player.java). Every field is optional because it is
+ * parsed from source text; missing fields carry a warning instead of a guess.
+ */
+export interface AnvilMechanicsDefinition {
+  /** Base cost seeded into every anvil operation (COST_BASE). */
+  costBase?: number;
+  /** Levels added per repair material consumed (COST_REPAIR_MATERIAL). */
+  costRepairMaterial?: number;
+  /** Levels added for repairing by sacrificing a same-type item (COST_REPAIR_SACRIFICE). */
+  costRepairSacrifice?: number;
+  /** Levels added per incompatible enchantment on the sacrifice (COST_INCOMPATIBLE_PENALTY). */
+  costIncompatiblePenalty?: number;
+  /** Flat cost of renaming (COST_RENAME). */
+  costRename?: number;
+  /** Maximum item name length accepted by the anvil (MAX_NAME_LENGTH). */
+  maxNameLength?: number;
+  /** Total cost at/above which the anvil shows "Too Expensive" in survival. */
+  tooExpensiveThreshold?: number;
+  /** Cost a rename-only operation is clamped to so it never becomes too expensive. */
+  renameOnlyCostClamp?: number;
+  /** Cost forced when enchanting a stack of more than one item. */
+  stackedItemCost?: number;
+  /** Prior-work update: repairCost' = multiplier * repairCost + addend (2c + 1 → penalty 2^n - 1). */
+  priorWorkFormula?: { multiplier: number; addend: number };
+  /** Durability restored per repair material, as a fraction of max damage (1/4). */
+  materialRepairFraction?: AnvilFraction;
+  /** Bonus durability granted when combining two damageable items (12/100 of max damage). */
+  sacrificeRepairBonus?: AnvilFraction;
+  /** Book fee: per-level anvil cost is divided by `divisor` (min `minimum`) when the sacrifice is a book. */
+  bookCostFee?: { divisor: number; minimum: number };
+  /** Chance the anvil degrades one stage after use. */
+  anvilBreakChance?: number;
+  /** Player.getXpNeededForNextLevel brackets, lowest minLevel first. */
+  xpPerLevelBrackets?: AnvilXpBracket[];
+  /** Decompiled source files the mechanics were parsed from. */
+  sourcePaths: string[];
+  /** Parse gaps: fields that could not be derived from source, with the reason. */
+  warnings: string[];
 }
 
 export interface TagDefinition {
@@ -789,6 +864,8 @@ export interface VersionDataset {
   /** Baked LayerDefinitions geometry for block entities without data-driven block models (chest, shulker box, conduit, banner, decorated pot, bell). Optional so older datasets still load. */
   blockEntityModels?: MobModelDefinition[];
   mobSounds: MobSoundDefinition[];
+  /** Source-derived anvil combine/repair mechanics. Optional so older datasets still load. */
+  anvilMechanics?: AnvilMechanicsDefinition;
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
   renderData?: MinecraftRenderDataset;

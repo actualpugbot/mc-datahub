@@ -31,6 +31,7 @@ import {
 import { buildPalettes } from "./palettes.js";
 import { buildBanners } from "./banners.js";
 import { buildBiomes } from "./biomes.js";
+import { enrichEnchantments } from "./enchantments.js";
 
 const BLOCKSTATE_PREFIX = "assets/minecraft/blockstates/";
 const MODEL_PREFIX = "assets/minecraft/models/";
@@ -60,11 +61,11 @@ export class MinecraftDataExtractor {
     const itemTags = await this.readTags(paths, source, ITEM_TAG_PREFIX);
     const blocks = await this.readBlocks(paths, source, models, blockTags);
     const items = await this.readItems(paths, source, models, itemTags, recipes);
-    const enchantments = await this.readEnchantments(paths, source);
     const tags = await this.readTagDefinitions(paths, source);
     const lootTables = await this.readLootTables(paths, source);
     const advancements = await this.readAdvancements(paths, source);
     const translations = await this.readTranslations(paths, source);
+    const enchantments = enrichEnchantments(await this.readEnchantments(paths, source), tags, translations);
     const biomes = await buildBiomes(paths, source, tags, translations);
     const banners = buildBanners(translations, paths);
 

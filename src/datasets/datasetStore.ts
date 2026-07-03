@@ -92,6 +92,15 @@ export class DatasetStore {
         : []),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
       writeJsonFile(join(directory, "enchantments.json"), dataset.enchantments),
+      ...(dataset.anvilMechanics
+        ? [
+            writeJsonFile(join(directory, "anvil-mechanics.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.anvilMechanics,
+            }),
+          ]
+        : []),
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
       writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
       writeJsonFile(join(directory, "advancements.json"), dataset.advancements),

@@ -258,6 +258,9 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
           entry.supportedItems ?? "",
         ]),
       };
+    case "anvil-mechanics":
+      // Single source-derived object, exposed as a one-entry collection for route consistency.
+      return { responseKey: "anvilMechanics", entries: dataset.anvilMechanics ? [dataset.anvilMechanics] : [] };
     case "loot-tables":
       return {
         responseKey: "lootTables",
@@ -314,6 +317,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       models: dataset.models.length,
       textures: dataset.textures.length,
       enchantments: dataset.enchantments.length,
+      anvilMechanics: dataset.anvilMechanics ? 1 : 0,
       tags: dataset.tags.length,
       lootTables: dataset.lootTables.length,
       advancements: dataset.advancements.length,

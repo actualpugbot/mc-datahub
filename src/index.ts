@@ -13,6 +13,7 @@ import { MobImageExtractor } from "./extraction/mobImageExtractor.js";
 import { MobModelExtractor } from "./extraction/mobModelExtractor.js";
 import { MobSoundExtractor } from "./extraction/mobSoundExtractor.js";
 import { RenderDataExtractor } from "./extraction/renderDataExtractor.js";
+import { AnvilMechanicsExtractor } from "./extraction/anvilMechanicsExtractor.js";
 import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
 import { FetchLatestWorkflow } from "./orchestrators/fetchLatest.js";
@@ -40,6 +41,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const renderDataExtractor = new RenderDataExtractor(logger);
   const mobSoundMinecraftWiki = new MinecraftWikiMobSoundSource(http, cache, logger, config.urls.minecraftWikiApi);
   const sourceExtractor = new DecompiledSourceExtractor(logger);
+  const anvilMechanicsExtractor = new AnvilMechanicsExtractor(logger);
   const datasetStore = new DatasetStore(config.workspace, logger);
   const diffEngine = new DiffEngine();
   const newsWatcher = new MinecraftNewsWatcher(http, cache, config, logger);
@@ -55,6 +57,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     renderDataExtractor,
     mobSoundMinecraftWiki,
     sourceExtractor,
+    anvilMechanicsExtractor,
     datasetStore,
     state,
     config,
@@ -79,6 +82,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     renderDataExtractor,
     mobSoundMinecraftWiki,
     sourceExtractor,
+    anvilMechanicsExtractor,
     datasetStore,
     diffEngine,
     newsWatcher,

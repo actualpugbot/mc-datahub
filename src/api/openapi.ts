@@ -13,6 +13,11 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
   { slug: "models", key: "models", summary: "Model parent chains and texture references." },
   { slug: "textures", key: "textures", summary: "Texture metadata; pixels are served under /assets." },
   { slug: "enchantments", key: "enchantments", summary: "Data-driven enchantment definitions." },
+  {
+    slug: "anvil-mechanics",
+    key: "anvilMechanics",
+    summary: "Source-derived anvil combine/repair mechanics (costs, thresholds, prior-work and XP formulas).",
+  },
   { slug: "tags", key: "tags", summary: "Registry tags (block, item, fluid, entity_type, …) and their values." },
   { slug: "loot-tables", key: "lootTables", summary: "Loot tables with derived item drops and functions." },
   { slug: "advancements", key: "advancements", summary: "Advancement tree with criteria, display keys, and rewards." },
