@@ -293,7 +293,8 @@ export interface MobModelCubeDefinition {
   deformation: [number, number, number];
   mirror: boolean;
   texOffs: [number, number];
-  faces: Record<MobModelFaceName, MobModelFaceDefinition>;
+  /** Faces omitted here were invisible in the vanilla addBox visibleSides set. */
+  faces: Partial<Record<MobModelFaceName, MobModelFaceDefinition>>;
 }
 
 export interface MobModelPartDefinition {
@@ -301,6 +302,8 @@ export interface MobModelPartDefinition {
   path: string;
   pivot: [number, number, number];
   rotation: [number, number, number];
+  /** Per-axis PartPose scale; omitted when `[1, 1, 1]`. Applies to the part and its subtree. */
+  scale?: [number, number, number];
   cubes: MobModelCubeDefinition[];
   children: MobModelPartDefinition[];
 }
@@ -315,6 +318,8 @@ export interface MobModelLayerDefinition {
   rawExpression?: string;
   status: "baked" | "partial" | "unresolved";
   warnings: string[];
+  /** Which bake strategy produced `root`: executing the transpiled layer code, or statement parsing. */
+  bakeStrategy?: "executed" | "parsed";
 }
 
 export interface MobModelTextureDefinition {

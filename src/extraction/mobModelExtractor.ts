@@ -5,12 +5,14 @@ import type { Logger } from "../core/logger.js";
 import type {
   MobModelCubeDefinition,
   MobModelDefinition,
-  MobModelFaceName,
   MobModelLayerDefinition,
   MobModelPartDefinition,
   MobModelTextureDefinition,
   MobSoundDefinition,
 } from "../domain/types.js";
+import { bakeCubeFaces, countPartCubes, ModelSourceExecutor } from "./modelSourceExecutor.js";
+
+export { bakeCubeFaces } from "./modelSourceExecutor.js";
 
 const ENTITY_RENDERERS_SOURCE_PATH = "net/minecraft/client/renderer/entity/EntityRenderers.java";
 const ENTITY_RENDERER_SOURCE_DIR = "net/minecraft/client/renderer/entity";
@@ -22,7 +24,6 @@ const RENDERER_TEXTURE_PATTERN = /textures\/entity\/[a-z0-9_./-]+\.png/gi;
 const MODEL_LAYER_PATTERN = /ModelLayers\.([A-Z0-9_]+)/g;
 const REGISTER_METHOD_REFERENCE_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
 const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
-const FACE_NAMES = ["down", "up", "west", "north", "east", "south"] as const;
 
 type Vec3 = [number, number, number];
 
@@ -97,6 +98,8 @@ interface ParsedLayerExpression {
   expression: string;
   modelClass?: string;
   modelMethod?: string;
+  /** createRoots local variable declarations, for execution-time resolution. */
+  locals?: Map<string, string>;
 }
 
 interface ParsedPart {
@@ -142,6 +145,7 @@ export class MobModelExtractor {
       this.loadLayerExpressions(decompiledClientRoot),
       this.indexModelSources(decompiledClientRoot),
     ]);
+    const executor = new ModelSourceExecutor(modelSourcePaths);
     const bakedLayers = new Map<string, MobModelLayerDefinition>();
     const results: MobModelDefinition[] = [];
 
@@ -162,7 +166,7 @@ export class MobModelExtractor {
         const cacheKey = `${layerId}`;
         let layer = bakedLayers.get(cacheKey);
         if (!layer) {
-          layer = await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot);
+          layer = await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor);
           bakedLayers.set(cacheKey, layer);
         }
         layers.push(layer);
@@ -198,12 +202,15 @@ export class MobModelExtractor {
       this.loadLayerExpressions(decompiledClientRoot),
       this.indexModelSources(decompiledClientRoot),
     ]);
+    const executor = new ModelSourceExecutor(modelSourcePaths);
     const results: MobModelDefinition[] = [];
 
     for (const spec of BLOCK_ENTITY_MODEL_SPECS) {
       const layers: MobModelLayerDefinition[] = [];
       for (const layerId of spec.modelLayers) {
-        layers.push(await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot));
+        layers.push(
+          await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor),
+        );
       }
       results.push({
         id: spec.id,
@@ -345,6 +352,7 @@ export class MobModelExtractor {
     const source = await fs.readFile(sourcePath, "utf8");
     const body = extractMethodBody(source, "createRoots")?.body ?? source;
     const variableExpressions = parseLayerVariableExpressions(body);
+    const locals = parseCreateRootsLocals(body);
     const layers = new Map<string, ParsedLayerExpression>();
 
     for (const statement of splitStatements(body)) {
@@ -361,6 +369,7 @@ export class MobModelExtractor {
         expression,
         modelClass: methodRef?.modelClass,
         modelMethod: methodRef?.modelMethod,
+        locals,
       });
     }
 
@@ -394,11 +403,59 @@ export class MobModelExtractor {
     expression: ParsedLayerExpression | undefined,
     modelSourcePaths: Map<string, string>,
     decompiledClientRoot: string,
+    executor: ModelSourceExecutor,
   ): Promise<MobModelLayerDefinition> {
-    const warnings: string[] = [];
     if (!expression) {
       return { id: layerId, status: "unresolved", warnings: [`No LayerDefinitions entry was found for ${layerId}.`] };
     }
+
+    const parsed = await this.bakeLayerByParsing(layerId, expression, modelSourcePaths, decompiledClientRoot);
+
+    // Execution is the primary strategy: it runs the real (transpiled) layer
+    // code, so loop-generated geometry (blaze rods, ghast/squid tentacles,
+    // guardian spikes, endermite/silverfish/magma cube segments) and
+    // cross-class delegation (zombified piglin) bake exactly. The statement
+    // parser remains as the fallback whenever execution fails or loses cubes.
+    let executionFailure: string | undefined;
+    try {
+      const executed = await executor.executeLayerExpression(expression.expression, expression.locals);
+      const executedCubes = countPartCubes(executed.root);
+      // Trust a successful execution outright: it can legitimately produce
+      // FEWER cubes than the parser (retainPartsAndChildren/clearChild strip
+      // parts the parser blindly keeps). Only an empty result falls back.
+      if (executedCubes > 0) {
+        return {
+          id: layerId,
+          ...(expression.modelClass ? { modelClass: expression.modelClass } : {}),
+          ...(expression.modelMethod ? { modelMethod: expression.modelMethod } : {}),
+          ...(parsed.sourcePath ? { sourcePath: parsed.sourcePath } : {}),
+          ...(executed.textureSize ? { textureSize: executed.textureSize } : {}),
+          root: executed.root,
+          rawExpression: expression.expression,
+          status: executed.warnings.length > 0 ? "partial" : "baked",
+          warnings: executed.warnings,
+          bakeStrategy: "executed",
+        };
+      }
+      executionFailure = `Execution bake produced ${executedCubes} cubes; kept the parsed result.`;
+    } catch (error) {
+      executionFailure = `Execution bake failed: ${(error as Error).message}`;
+    }
+
+    return {
+      ...parsed,
+      bakeStrategy: "parsed",
+      warnings: executionFailure ? [...parsed.warnings, executionFailure] : parsed.warnings,
+    };
+  }
+
+  private async bakeLayerByParsing(
+    layerId: string,
+    expression: ParsedLayerExpression,
+    modelSourcePaths: Map<string, string>,
+    decompiledClientRoot: string,
+  ): Promise<MobModelLayerDefinition> {
+    const warnings: string[] = [];
 
     if (!expression.modelClass || !expression.modelMethod) {
       return {
@@ -471,47 +528,6 @@ export async function bakeModelSource(
     status: root.children.length > 0 || root.cubes.length > 0 ? (warnings.length > 0 ? "partial" : "baked") : "unresolved",
     warnings,
   };
-}
-
-export function bakeCubeFaces(
-  texU: number,
-  texV: number,
-  width: number,
-  height: number,
-  depth: number,
-  textureWidth: number,
-  textureHeight: number,
-): MobModelCubeDefinition["faces"] {
-  const u0 = texU;
-  const u1 = texU + depth;
-  const u2 = texU + depth + width;
-  const u22 = texU + depth + width + width;
-  const u3 = texU + depth + width + depth;
-  const u4 = texU + depth + width + depth + width;
-  const v0 = texV;
-  const v1 = texV + depth;
-  const v2 = texV + depth + height;
-  const pixels: Record<MobModelFaceName, [number, number, number, number]> = {
-    down: [u1, v0, u2, v1],
-    up: [u2, v1, u22, v0],
-    west: [u0, v1, u1, v2],
-    north: [u1, v1, u2, v2],
-    east: [u2, v1, u3, v2],
-    south: [u3, v1, u4, v2],
-  };
-
-  return Object.fromEntries(
-    FACE_NAMES.map((face) => {
-      const uv = pixels[face];
-      return [
-        face,
-        {
-          uv,
-          normalizedUv: [uv[0] / textureWidth, uv[1] / textureHeight, uv[2] / textureWidth, uv[3] / textureHeight],
-        },
-      ];
-    }),
-  ) as MobModelCubeDefinition["faces"];
 }
 
 function parseParts(body: string, textureSize: [number, number]): ParsedPart[] {
@@ -778,6 +794,22 @@ function parseLayerVariableExpressions(source: string): Map<string, string> {
     }
   }
   return variables;
+}
+
+/**
+ * Every local declaration in createRoots (`MeshTransformer villagerLikeScale
+ * = MeshTransformer.scaling(0.9375F)`, armor deformations, ...) so the
+ * execution baker can resolve identifiers embedded in layer expressions.
+ */
+function parseCreateRootsLocals(source: string): Map<string, string> {
+  const locals = new Map<string, string>();
+  for (const statement of splitStatements(source)) {
+    const match = statement.match(/^(?:final\s+)?[A-Z][\w$]*(?:<[^=]*?>)?\s+([a-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    if (match?.[1] && match[2]) {
+      locals.set(match[1], match[2].trim());
+    }
+  }
+  return locals;
 }
 
 function resolveLayerExpression(expression: string, variables: Map<string, string>, seen: Set<string>): string {
