@@ -695,6 +695,168 @@ export interface AnvilMechanicsDefinition {
   warnings: string[];
 }
 
+/** A block/item a Sulfur Cube can swallow, with its display name resolved from en_us when available. */
+export interface SulfurCubeBlock {
+  id: string;
+  name: string;
+}
+
+/** One entity-attribute modifier a cube gains while wearing an archetype's block, exactly as in the archetype JSON. */
+export interface SulfurCubeAttributeModifier {
+  attribute: string;
+  amount: number;
+  operation: string;
+  id: string;
+}
+
+/**
+ * Human-oriented behavior numbers, mirroring the game's `archetype(speed, bounce, friction, drag)`
+ * helper. These are the effective attribute values a cube adopts (base bounciness/knockback are 0,
+ * base friction/air-drag are 1, so the modifier value is the effective value).
+ */
+export interface SulfurCubeBehavior {
+  /** Game helper "speed" = -knockback_resistance. Higher = shoved further/faster when hit or bumped into. */
+  mobility: number;
+  /** Effective bounciness attribute, 0..1. Higher = bounces more. */
+  bounciness: number;
+  /** Effective friction_modifier. Lower = slipperier (slides), higher = grippy/sticky. */
+  friction: number;
+  /** Effective air_drag_modifier. Lower = keeps momentum and travels further; higher = damps quickly. */
+  airDrag: number;
+}
+
+/** The TNT-like explosion an explosive archetype produces when primed. */
+export interface SulfurCubeExplosion {
+  power: number;
+  causesFire: boolean;
+  /** Fuse length in ticks once primed. */
+  fuse: number;
+}
+
+/** Contact damage a cube deals to entities it touches while wearing a block (e.g. the hot archetype). */
+export interface SulfurCubeContactDamage {
+  damageType: string;
+  amount: number;
+  attributeToSource: boolean;
+}
+
+/** Per-archetype knockback the cube imparts when a player walks into it or it is hit. */
+export interface SulfurCubeKnockback {
+  horizontalPower: number;
+  verticalPower: number;
+}
+
+/** Per-archetype hit/push sounds and push-sound gating. */
+export interface SulfurCubeSound {
+  hit: string;
+  push: string;
+  pushCooldownSeconds: number;
+  pushImpulseThreshold: number;
+}
+
+/**
+ * One Sulfur Cube archetype: the behavior profile a cube takes on while it has swallowed a matching
+ * block, plus the fully-resolved list of blocks that select it.
+ */
+export interface SulfurCubeArchetypeDefinition {
+  /** Namespaced archetype id, e.g. "minecraft:regular". */
+  id: string;
+  /** Bare archetype key, e.g. "regular". */
+  key: string;
+  displayName: string;
+  behavior: SulfurCubeBehavior;
+  /** Raw attribute modifiers exactly as declared in the archetype JSON (unrounded for provenance). */
+  attributeModifiers: SulfurCubeAttributeModifier[];
+  /** Floats on water/lava while holding a block. */
+  buoyant: boolean;
+  explosive: boolean;
+  dealsContactDamage: boolean;
+  explosion?: SulfurCubeExplosion;
+  contactDamage?: SulfurCubeContactDamage;
+  knockback: SulfurCubeKnockback;
+  sound: SulfurCubeSound;
+  /** The item tag whose members select this archetype (e.g. "#minecraft:sulfur_cube_archetype/regular"). */
+  itemsTag: string;
+  /** Nested tag references kept from the archetype's item tag for provenance. */
+  blockTags: string[];
+  blocks: SulfurCubeBlock[];
+  blockCount: number;
+  sourcePath: string;
+}
+
+/** One attribute in the Sulfur Cube's base attribute supplier, resolved to its base value and clamp range. */
+export interface SulfurCubeBaseAttribute {
+  attribute: string;
+  /** Base value the entity's AttributeSupplier declares for this attribute. */
+  base: number;
+  min: number;
+  max: number;
+  /** The attribute registry's own default base value. */
+  attributeDefault: number;
+  /** True when the entity's supplier sets a base other than the registry default. */
+  overridden: boolean;
+  /** Extra provenance, e.g. a runtime override not visible in the static supplier. */
+  note?: string;
+}
+
+/** Static, block-independent facts about the Sulfur Cube entity. */
+export interface SulfurCubeEntityMeta {
+  id: string;
+  displayName: string;
+  spawnBiome?: string;
+  fullSize: number;
+  babySize: number;
+  /** maxHealth = healthPerSize * size (full cube and baby). */
+  healthPerSize?: number;
+  temptRange?: number;
+  splitCount?: number;
+  /** Ticks a cube ignores nearby items after being sheared. */
+  pickupTimerTicks?: number;
+  experienceReward?: { min: number; max: number };
+  bucketItem: string;
+  spawnEggItem: string;
+  contentComponent: string;
+  particle: string;
+  /** Items that feed a baby cube / are used for breeding. */
+  foodItems: string[];
+  /** Item tag of everything a cube can swallow. */
+  swallowableTag: string;
+  shearable: boolean;
+  bucketable: boolean;
+  /** Dataset-relative served entity texture paths (fetch at `/versions/:v/assets/<path>`). */
+  textures: string[];
+}
+
+/** The bespoke damage type the hot archetype applies on contact. */
+export interface SulfurCubeHotDamageType {
+  id: string;
+  effects?: string;
+  exhaustion?: number;
+  scaling?: string;
+  messageId?: string;
+}
+
+/**
+ * Source-derived Sulfur Cube dataset: how a cube behaves depending on the block it has swallowed.
+ * Derived from the data-driven archetype registry, the archetype/swallowable item tags, the hot
+ * damage type, and a handful of constants parsed from the entity source. Optional/warn on gaps.
+ */
+export interface SulfurCubeDataset {
+  entity: SulfurCubeEntityMeta;
+  /** Factual notes on how swallowing and the resulting behavior swap work. */
+  behaviorModel: string[];
+  /** The cube's complete base attribute supplier: every attribute it has, with base value and clamp range. */
+  baseAttributes: SulfurCubeBaseAttribute[];
+  /** Damage types a cube becomes immune to while wearing any block. */
+  immunitiesWhenHoldingBlock: string[];
+  hotDamageType?: SulfurCubeHotDamageType;
+  archetypes: SulfurCubeArchetypeDefinition[];
+  /** Reverse lookup: swallowable block/item id → archetype key. */
+  blockIndex: Record<string, string>;
+  sourcePaths: string[];
+  warnings: string[];
+}
+
 export interface TagDefinition {
   id: string;
   registry: string;
@@ -866,6 +1028,8 @@ export interface VersionDataset {
   mobSounds: MobSoundDefinition[];
   /** Source-derived anvil combine/repair mechanics. Optional so older datasets still load. */
   anvilMechanics?: AnvilMechanicsDefinition;
+  /** Source-derived Sulfur Cube archetypes and the blocks that select them. Optional so older datasets still load. */
+  sulfurCube?: SulfurCubeDataset;
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
   renderData?: MinecraftRenderDataset;

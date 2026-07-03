@@ -36,6 +36,7 @@ workspace/
     recipes.json
     enchantments.json
     anvil-mechanics.json
+    sulfur-cube.json
     tags.json
     loot-tables.json
     advancements.json
@@ -68,6 +69,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
 - `enchantments.json`: data-driven enchantment definitions (description key, supported items, max level, weight, anvil cost, slots) enriched with resolved fields: `displayName` (en_us), `supportedItemIds`/`primaryItemIds` (tag refs expanded to concrete item ids), `exclusiveSetIds` (incompatible enchantment ids), `minCost`/`maxCost` (enchanting-table formulas), and `tags` (enchantment-registry memberships such as `minecraft:curse`, `minecraft:treasure`, `minecraft:in_enchanting_table`)
 - `anvil-mechanics.json`: source-derived anvil combine/repair mechanics from `AnvilMenu.java` and `Player.java` — rename/repair/incompatibility costs, the 40-level "Too Expensive" threshold and 39 rename clamp, the prior-work formula (`2c + 1`), material/sacrifice repair fractions, the book fee halving rule, anvil break chance, and the player XP-per-level brackets; unparseable fields become `warnings` entries instead of guesses
+- `sulfur-cube.json`: source-derived Sulfur Cube behavior keyed on the block it has swallowed. Resolves the data-driven `sulfur_cube_archetype` registry plus its `#minecraft:sulfur_cube_archetype/*` item tags into 12 archetypes, each with human-oriented behavior numbers (`mobility`, `bounciness`, `friction`, `airDrag`), the raw entity-attribute modifiers, buoyancy, optional explosion/contact-damage, knockback, per-archetype sounds, and the fully-expanded list of swallowable blocks (with display names) that select it. Also includes a `blockIndex` reverse lookup (block id → archetype), the entity meta (sizes, health, split, tempt range, bucket/shear/food, spawn biome), the damage types a block-wearing cube is immune to, the hot-contact damage type, and relevant attribute base ranges; parse gaps become `warnings` instead of guesses
 - `tags.json`: registry tags (block, item, fluid, entity_type, …) with their resolved values
 - `loot-tables.json`: loot tables with derived item drops and the loot functions they use
 - `advancements.json`: advancement tree with parent, display keys, icon, criteria, and rewards
@@ -99,7 +101,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 - `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
 - `GET /versions/:version/dataset` — the full combined dataset in one response
 - `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
-- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds}`
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
 
 Every collection endpoint supports `?id=` (exact id) or `?q=` (substring) filtering and `?limit=`/`?offset=` pagination; `tags` also supports `?registry=`. A real OpenAPI 3.1 document is served at `GET /openapi.json` for Swagger UI and client codegen.
@@ -135,7 +137,7 @@ npm run cli -- api serve --port 4000
 
 `versions list` reports which versions already have a processed dataset on disk.
 
-`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
+`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `sulfur-cube`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 

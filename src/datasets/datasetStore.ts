@@ -101,6 +101,15 @@ export class DatasetStore {
             }),
           ]
         : []),
+      ...(dataset.sulfurCube
+        ? [
+            writeJsonFile(join(directory, "sulfur-cube.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.sulfurCube,
+            }),
+          ]
+        : []),
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
       writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
       writeJsonFile(join(directory, "advancements.json"), dataset.advancements),

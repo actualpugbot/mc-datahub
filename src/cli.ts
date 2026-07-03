@@ -25,6 +25,7 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   translations: (dataset) => dataset.translations,
   palettes: (dataset) => dataset.palettes,
   biomes: (dataset) => dataset.biomes,
+  "sulfur-cube": (dataset) => dataset.sulfurCube ?? null,
   banners: (dataset) => dataset.banners ?? { patterns: [], colors: [] },
   "mob-images": (dataset) => dataset.mobImages,
   "mob-models": (dataset) => dataset.mobModels,

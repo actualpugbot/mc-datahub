@@ -18,6 +18,11 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     key: "anvilMechanics",
     summary: "Source-derived anvil combine/repair mechanics (costs, thresholds, prior-work and XP formulas).",
   },
+  {
+    slug: "sulfur-cube",
+    key: "sulfurCube",
+    summary: "Source-derived Sulfur Cube archetypes and the blocks that select them (behavior per swallowed block).",
+  },
   { slug: "tags", key: "tags", summary: "Registry tags (block, item, fluid, entity_type, …) and their values." },
   { slug: "loot-tables", key: "lootTables", summary: "Loot tables with derived item drops and functions." },
   { slug: "advancements", key: "advancements", summary: "Advancement tree with criteria, display keys, and rewards." },
