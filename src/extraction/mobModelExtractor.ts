@@ -227,7 +227,9 @@ export class MobModelExtractor {
     for (const spec of BLOCK_ENTITY_MODEL_SPECS) {
       const layers: MobModelLayerDefinition[] = [];
       for (const layerId of spec.modelLayers) {
-        layers.push(await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor));
+        layers.push(
+          await this.bakeLayer(layerId, layerExpressions.get(layerId), modelSourcePaths, decompiledClientRoot, executor),
+        );
       }
       results.push({
         id: spec.id,

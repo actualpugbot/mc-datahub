@@ -107,7 +107,17 @@ class PartPoseStub {
   static readonly ZERO = PartPoseStub.offsetAndRotation(0, 0, 0, 0, 0, 0);
 
   translated(x: number, y: number, z: number): PartPoseStub {
-    return new PartPoseStub(this.x + x, this.y + y, this.z + z, this.xRot, this.yRot, this.zRot, this.xScale, this.yScale, this.zScale);
+    return new PartPoseStub(
+      this.x + x,
+      this.y + y,
+      this.z + z,
+      this.xRot,
+      this.yRot,
+      this.zRot,
+      this.xScale,
+      this.yScale,
+      this.zScale,
+    );
   }
 
   withScale(scale: number): PartPoseStub {
@@ -237,9 +247,15 @@ class PartDefinitionStub {
     readonly pose: PartPoseStub,
   ) {}
 
-  addOrReplaceChild(name: string, cubesOrPart: CubeListBuilderStub | PartDefinitionStub, pose?: PartPoseStub): PartDefinitionStub {
+  addOrReplaceChild(
+    name: string,
+    cubesOrPart: CubeListBuilderStub | PartDefinitionStub,
+    pose?: PartPoseStub,
+  ): PartDefinitionStub {
     const child =
-      cubesOrPart instanceof PartDefinitionStub ? cubesOrPart : new PartDefinitionStub(cubesOrPart.getCubes(), pose ?? PartPoseStub.ZERO);
+      cubesOrPart instanceof PartDefinitionStub
+        ? cubesOrPart
+        : new PartDefinitionStub(cubesOrPart.getCubes(), pose ?? PartPoseStub.ZERO);
     const previous = this.children.get(name);
     this.children.set(name, child);
     if (previous) {
@@ -331,10 +347,7 @@ function applyMeshTransformer(transformer: unknown, mesh: MeshDefinitionStub): M
   if (typeof transformer === "function") {
     return transformer(mesh) as MeshDefinitionStub;
   }
-  if (
-    transformer &&
-    typeof (transformer as { applyTransform?: unknown }).applyTransform === "function"
-  ) {
+  if (transformer && typeof (transformer as { applyTransform?: unknown }).applyTransform === "function") {
     return (transformer as { applyTransform: (mesh: MeshDefinitionStub) => MeshDefinitionStub }).applyTransform(mesh);
   }
   throw new Error("Unsupported MeshTransformer value");
@@ -577,7 +590,10 @@ export class ModelSourceExecutor {
 
   private compileMethod(info: JavaClassInfo, params: string[], body: string): (...args: unknown[]) => unknown {
     const transpiled = transpileJavaSnippet(body);
-    const fn = new Function("SCOPE", ...params, `with (SCOPE) { ${transpiled} }`) as (scope: object, ...args: unknown[]) => unknown;
+    const fn = new Function("SCOPE", ...params, `with (SCOPE) { ${transpiled} }`) as (
+      scope: object,
+      ...args: unknown[]
+    ) => unknown;
     return (...args: unknown[]) => fn(info.scopeProxy, ...args);
   }
 
@@ -840,7 +856,10 @@ export function transpileJavaSnippet(java: string): string {
   code = convertArrayLiterals(code);
 
   // Array allocation: `new float[7]` -> zero-filled JS array
-  code = code.replace(/new\s+(?:int|long|short|byte|float|double|boolean)\s*\[\s*([^\]]+)\s*\]\s*(?!\[)/g, "new Array($1).fill(0)");
+  code = code.replace(
+    /new\s+(?:int|long|short|byte|float|double|boolean)\s*\[\s*([^\]]+)\s*\]\s*(?!\[)/g,
+    "new Array($1).fill(0)",
+  );
 
   // Integer division must truncate before casts/suffixes are erased.
   code = applyIntegerDivision(code);

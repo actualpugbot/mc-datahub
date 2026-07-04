@@ -120,7 +120,9 @@ export function validateRenderDataset(dataset: MinecraftRenderDataset): RenderVa
   }
 
   for (const entityModel of dataset.entityModels) {
-    const hasGeometry = entityModel.layers.some((layer) => layer.root && (layer.root.children.length > 0 || layer.root.cubes.length > 0));
+    const hasGeometry = entityModel.layers.some(
+      (layer) => layer.root && (layer.root.children.length > 0 || layer.root.cubes.length > 0),
+    );
     if (hasGeometry && entityModel.textureAssets.length === 0) {
       issues.push({
         code: "mob_geometry_without_texture",
@@ -144,7 +146,9 @@ export function validateRenderDataset(dataset: MinecraftRenderDataset): RenderVa
   }
 
   for (const knownId of KNOWN_SPECIAL_RENDERER_IDS) {
-    const classified = dataset.specialRenderers.some((renderer) => renderer.id === knownId || renderer.id.includes(knownId.replace(/^minecraft:/, "")));
+    const classified = dataset.specialRenderers.some(
+      (renderer) => renderer.id === knownId || renderer.id.includes(knownId.replace(/^minecraft:/, "")),
+    );
     if (!classified) {
       issues.push({
         code: "known_special_renderer_unclassified",
@@ -191,7 +195,9 @@ export function validateRenderDataset(dataset: MinecraftRenderDataset): RenderVa
       issues: issues.length,
       errors: errorCount,
     },
-    issues: issues.sort((left, right) => `${left.code}:${left.id ?? ""}:${left.message}`.localeCompare(`${right.code}:${right.id ?? ""}:${right.message}`)),
+    issues: issues.sort((left, right) =>
+      `${left.code}:${left.id ?? ""}:${left.message}`.localeCompare(`${right.code}:${right.id ?? ""}:${right.message}`),
+    ),
   };
 }
 
@@ -224,11 +230,7 @@ function validateModelFaces(model: ResolvedRenderModel, textureIds: Set<string>,
   }
 }
 
-function validateCollection(
-  name: string,
-  values: { id: string }[],
-  issues: RenderValidationIssue[],
-): void {
+function validateCollection(name: string, values: { id: string }[], issues: RenderValidationIssue[]): void {
   const seen = new Set<string>();
   let previous = "";
   for (const value of values) {
