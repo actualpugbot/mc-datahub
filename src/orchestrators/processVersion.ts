@@ -19,6 +19,7 @@ import type { MobSoundExtractor } from "../extraction/mobSoundExtractor.js";
 import type { MobSoundDefinition } from "../domain/types.js";
 import type { RenderDataExtractor } from "../extraction/renderDataExtractor.js";
 import type { AnvilMechanicsExtractor } from "../extraction/anvilMechanicsExtractor.js";
+import type { SulfurCubeExtractor } from "../extraction/sulfurCubeExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 import { validateRenderDataset } from "../validation/renderValidation.js";
 
@@ -42,6 +43,7 @@ export class ProcessVersionWorkflow {
     private readonly mobSoundMinecraftWiki: MinecraftWikiMobSoundSource,
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly anvilMechanicsExtractor: AnvilMechanicsExtractor,
+    private readonly sulfurCubeExtractor: SulfurCubeExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
     private readonly config: AppConfig,
@@ -105,6 +107,7 @@ export class ProcessVersionWorkflow {
     dataset.itemStats = sourceDerived.itemStats;
     dataset.blockProperties = sourceDerived.blockProperties;
     dataset.anvilMechanics = await this.anvilMechanicsExtractor.extract(decompiledClientRoot);
+    dataset.sulfurCube = await this.sulfurCubeExtractor.extract(decompiledClientRoot);
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.mobModels = mobModels;

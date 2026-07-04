@@ -10,13 +10,13 @@ describe("mob model extractor", () => {
   test("bakes Mojang cube UV rectangles in ModelPart face order", () => {
     const faces = bakeCubeFaces(0, 0, 8, 8, 6, 64, 64);
 
-    expect(faces.down.uv).toEqual([6, 0, 14, 6]);
-    expect(faces.up.uv).toEqual([14, 6, 22, 0]);
-    expect(faces.west.uv).toEqual([0, 6, 6, 14]);
-    expect(faces.north.uv).toEqual([6, 6, 14, 14]);
-    expect(faces.east.uv).toEqual([14, 6, 20, 14]);
-    expect(faces.south.uv).toEqual([20, 6, 28, 14]);
-    expect(faces.north.normalizedUv).toEqual([6 / 64, 6 / 64, 14 / 64, 14 / 64]);
+    expect(faces.down!.uv).toEqual([6, 0, 14, 6]);
+    expect(faces.up!.uv).toEqual([14, 6, 22, 0]);
+    expect(faces.west!.uv).toEqual([0, 6, 6, 14]);
+    expect(faces.north!.uv).toEqual([6, 6, 14, 14]);
+    expect(faces.east!.uv).toEqual([14, 6, 20, 14]);
+    expect(faces.south!.uv).toEqual([20, 6, 28, 14]);
+    expect(faces.north!.normalizedUv).toEqual([6 / 64, 6 / 64, 14 / 64, 14 / 64]);
   });
 
   test("links renderer model layers and extracts part pivots, rotations, cubes, and UVs", async () => {
@@ -101,7 +101,7 @@ describe("mob model extractor", () => {
     const head = layer?.root?.children.find((part) => part.name === "head");
     expect(head?.pivot).toEqual([0, 4, -8]);
     expect(head?.cubes[0]?.origin).toEqual([-4, -4, -6]);
-    expect(head?.cubes[0]?.faces.north.uv).toEqual([6, 6, 14, 14]);
+    expect(head?.cubes[0]?.faces.north!.uv).toEqual([6, 6, 14, 14]);
 
     const body = layer?.root?.children.find((part) => part.name === "body");
     expect(body?.rotation[0]).toBeCloseTo(Math.PI / 2);

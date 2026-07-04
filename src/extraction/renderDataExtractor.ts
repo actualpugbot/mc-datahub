@@ -258,7 +258,11 @@ export class RenderDataExtractor {
     };
   }
 
-  private resolveElement(element: JsonValue, textures: Record<string, string>, unresolvedTextures: Set<string>): RenderModelElement {
+  private resolveElement(
+    element: JsonValue,
+    textures: Record<string, string>,
+    unresolvedTextures: Set<string>,
+  ): RenderModelElement {
     const object = isObject(element) ? element : {};
     const faces = isObject(object.faces) ? object.faces : {};
     const resolvedFaces: RenderModelElement["faces"] = {};
@@ -466,9 +470,10 @@ export class RenderDataExtractor {
   ): MobModelDefinition[] {
     return mobModels
       .map((mobModel) => {
-        let assets = uniqueTextureAssets([...(mobModel.textureAssets ?? []), ...(variantTextureAssets.get(mobModel.localId) ?? [])]).filter(
-          (asset) => textureMap.has(asset.id),
-        );
+        let assets = uniqueTextureAssets([
+          ...(mobModel.textureAssets ?? []),
+          ...(variantTextureAssets.get(mobModel.localId) ?? []),
+        ]).filter((asset) => textureMap.has(asset.id));
         if (assets.length === 0 && mobModel.layers.some((layer) => layer.root)) {
           assets = Array.from(textureMap.values())
             .filter(
@@ -545,16 +550,14 @@ export class RenderDataExtractor {
         source: {
           kind: "derived",
           path: "net/minecraft/client/renderer/chunk/ChunkSectionLayer.java",
-          reason: "Chunk terrain layer is selected from sprite transparency; per-block value is derived from resolved model textures.",
+          reason:
+            "Chunk terrain layer is selected from sprite transparency; per-block value is derived from resolved model textures.",
         } satisfies RenderProvenance,
       }))
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  private buildTints(
-    blockstates: BlockstateRenderDefinition[],
-    itemDisplays: ClientItemRenderDefinition[],
-  ): TintDefinition[] {
+  private buildTints(blockstates: BlockstateRenderDefinition[], itemDisplays: ClientItemRenderDefinition[]): TintDefinition[] {
     const tints: TintDefinition[] = [];
     for (const blockstate of blockstates) {
       const tintType = inferBlockTintType(blockstate.id);
@@ -586,7 +589,9 @@ export class RenderDataExtractor {
       }
     }
 
-    return tints.sort((left, right) => `${left.target}:${left.id}:${left.tintType}`.localeCompare(`${right.target}:${right.id}:${right.tintType}`));
+    return tints.sort((left, right) =>
+      `${left.target}:${left.id}:${left.tintType}`.localeCompare(`${right.target}:${right.id}:${right.tintType}`),
+    );
   }
 
   private async buildEntityRenderers(
@@ -596,7 +601,9 @@ export class RenderDataExtractor {
     const sourceByClass = decompiledClientRoot ? await indexRendererSources(decompiledClientRoot) : new Map<string, string>();
     return mobModels
       .map((mob) => {
-        const sourcePath = mob.rendererClass ? sourceByClass.get(mob.rendererClass.split(".")[0] ?? mob.rendererClass) : undefined;
+        const sourcePath = mob.rendererClass
+          ? sourceByClass.get(mob.rendererClass.split(".")[0] ?? mob.rendererClass)
+          : undefined;
         return {
           id: mob.id,
           displayName: mob.displayName,
@@ -604,7 +611,9 @@ export class RenderDataExtractor {
           sourcePath,
           modelLayers: mob.modelLayers,
           textureAssets: mob.textureAssets,
-          variantTextures: Object.fromEntries(mob.textureAssets.map((texture) => [variantIdFromTexture(texture.id, mob.localId), texture.id]).sort()),
+          variantTextures: Object.fromEntries(
+            mob.textureAssets.map((texture) => [variantIdFromTexture(texture.id, mob.localId), texture.id]).sort(),
+          ),
           overlays: inferEntityOverlays(mob),
           source: mob.rendererClass
             ? { kind: "client-source", path: sourcePath, className: mob.rendererClass }
@@ -635,7 +644,9 @@ export class RenderDataExtractor {
     itemDisplays: ClientItemRenderDefinition[],
     decompiledClientRoot?: string,
   ): Promise<SpecialRendererDefinition[]> {
-    const sourceByClass = decompiledClientRoot ? await indexSpecialRendererSources(decompiledClientRoot) : new Map<string, string>();
+    const sourceByClass = decompiledClientRoot
+      ? await indexSpecialRendererSources(decompiledClientRoot)
+      : new Map<string, string>();
     const renderers = new Map<string, SpecialRendererDefinition>();
 
     for (const [kind, definition] of Object.entries(SPECIAL_RENDERER_KINDS)) {
@@ -916,22 +927,38 @@ function inferItemRenderKind(
   if (specialKinds.length > 0) {
     return "special_renderer";
   }
-  if (isObject(modelNode) && ["minecraft:condition", "minecraft:range_dispatch", "minecraft:select", "minecraft:composite"].includes(String(modelNode.type))) {
+  if (
+    isObject(modelNode) &&
+    ["minecraft:condition", "minecraft:range_dispatch", "minecraft:select", "minecraft:composite"].includes(
+      String(modelNode.type),
+    )
+  ) {
     return "composite";
   }
   if (resolvedModel?.id.includes(":block/")) {
     return "block_model_gui";
   }
-  if (resolvedModel?.parentChain.some((parent) => parent.endsWith(":item/handheld")) || resolvedModel?.parent?.endsWith(":item/handheld")) {
+  if (
+    resolvedModel?.parentChain.some((parent) => parent.endsWith(":item/handheld")) ||
+    resolvedModel?.parent?.endsWith(":item/handheld")
+  ) {
     return "handheld_item";
   }
-  if (resolvedModel?.parentChain.some((parent) => parent.endsWith(":item/generated")) || resolvedModel?.parent?.endsWith(":item/generated")) {
+  if (
+    resolvedModel?.parentChain.some((parent) => parent.endsWith(":item/generated")) ||
+    resolvedModel?.parent?.endsWith(":item/generated")
+  ) {
     return "generated_flat_item";
   }
   return "unknown";
 }
 
-function buildGuiDescriptor(id: string, modelNode: JsonValue | undefined, modelRef: string | undefined, specialKinds: string[]): JsonValue {
+function buildGuiDescriptor(
+  id: string,
+  modelNode: JsonValue | undefined,
+  modelRef: string | undefined,
+  specialKinds: string[],
+): JsonValue {
   return {
     context: "gui",
     item: id,

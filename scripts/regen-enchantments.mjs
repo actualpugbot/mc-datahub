@@ -51,7 +51,9 @@ await writeJsonFile(join(datasetDir, "dataset.json"), dataset);
 console.log(`Wrote ${enchantments.length} enriched enchantments to ${join(datasetDir, "enchantments.json")}`);
 if (anvilMechanics) {
   const warnings = anvilMechanics.warnings.length;
-  console.log(`Wrote anvil mechanics (${warnings} warning${warnings === 1 ? "" : "s"}) to ${join(datasetDir, "anvil-mechanics.json")}`);
+  console.log(
+    `Wrote anvil mechanics (${warnings} warning${warnings === 1 ? "" : "s"}) to ${join(datasetDir, "anvil-mechanics.json")}`,
+  );
 } else if (!existsSync(decompiledClientRoot)) {
   console.log(`No decompiled client source for ${version}; skipped anvil mechanics.`);
 }

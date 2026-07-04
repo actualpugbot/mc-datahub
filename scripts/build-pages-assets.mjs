@@ -21,35 +21,35 @@
  *   node scripts/build-pages-assets.mjs
  *   MOB_VOICE_REPO=/path/to/mob-voice-over node scripts/build-pages-assets.mjs
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import process from 'node:process';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
 
-const repoRoot = path.resolve(import.meta.dirname, '..');
+const repoRoot = path.resolve(import.meta.dirname, "..");
 const home = os.homedir();
 
-const voiceRepo = process.env.MOB_VOICE_REPO ?? path.join(home, 'dev', 'mob-voice-over');
-const voiceAssets = path.join(voiceRepo, 'public', 'assets');
-const mobsImagesSrc = path.join(voiceAssets, 'mobs');
-const mobSoundsSrc = path.join(voiceAssets, 'mob_sounds');
-const mobConfigSrc = path.join(voiceRepo, 'public', 'mob_config.json');
+const voiceRepo = process.env.MOB_VOICE_REPO ?? path.join(home, "dev", "mob-voice-over");
+const voiceAssets = path.join(voiceRepo, "public", "assets");
+const mobsImagesSrc = path.join(voiceAssets, "mobs");
+const mobSoundsSrc = path.join(voiceAssets, "mob_sounds");
+const mobConfigSrc = path.join(voiceRepo, "public", "mob_config.json");
 
-const pagesDir = path.join(repoRoot, 'pages');
-const mobImagesDest = path.join(pagesDir, 'mob-images');
-const mobVoiceDest = path.join(pagesDir, 'mob-voice');
-const mobVoiceSoundsDest = path.join(mobVoiceDest, 'sounds');
+const pagesDir = path.join(repoRoot, "pages");
+const mobImagesDest = path.join(pagesDir, "mob-images");
+const mobVoiceDest = path.join(pagesDir, "mob-voice");
+const mobVoiceSoundsDest = path.join(mobVoiceDest, "sounds");
 
 function requireDir(label, dir) {
   if (!existsSync(dir)) {
     console.error(`[build-pages-assets] missing ${label}: ${dir}`);
-    console.error('  Set MOB_VOICE_REPO to the mob-voice-over checkout, or run its sound-download script first.');
+    console.error("  Set MOB_VOICE_REPO to the mob-voice-over checkout, or run its sound-download script first.");
     process.exit(1);
   }
 }
 
-requireDir('mob images', mobsImagesSrc);
-requireDir('wiki sounds', mobSoundsSrc);
+requireDir("mob images", mobsImagesSrc);
+requireDir("wiki sounds", mobSoundsSrc);
 
 console.log(`[build-pages-assets] repo: ${repoRoot}`);
 console.log(`[build-pages-assets] voice repo: ${voiceRepo}`);
@@ -67,18 +67,18 @@ cpSync(mobSoundsSrc, mobVoiceSoundsDest, { recursive: true });
 let soundCount = 0;
 for (const mob of readdirSync(mobVoiceSoundsDest, { withFileTypes: true })) {
   if (mob.isDirectory()) {
-    soundCount += readdirSync(path.join(mobVoiceSoundsDest, mob.name)).filter((f) => f.endsWith('.ogg')).length;
+    soundCount += readdirSync(path.join(mobVoiceSoundsDest, mob.name)).filter((f) => f.endsWith(".ogg")).length;
   }
 }
 
 // 3) Voice recorder config.
 if (existsSync(mobConfigSrc)) {
-  cpSync(mobConfigSrc, path.join(mobVoiceDest, 'mob_config.json'));
+  cpSync(mobConfigSrc, path.join(mobVoiceDest, "mob_config.json"));
 }
 
 // 4) Landing page (so the Pages root is not a 404).
 writeFileSync(
-  path.join(pagesDir, 'index.html'),
+  path.join(pagesDir, "index.html"),
   `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>mc-datahub assets</title><meta name="robots" content="noindex"></head>
 <body style="font:16px system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem">
@@ -87,7 +87,7 @@ writeFileSync(
 <ul><li><code>/mob-images/</code> — shared mob thumbnails</li>
 <li><code>/mob-voice/sounds/</code> — wiki original clips + index.json</li>
 <li><code>/mob-voice/mob_config.json</code> — mob sets &amp; version presets</li></ul>
-</body></html>\n`
+</body></html>\n`,
 );
 
 console.log(`[build-pages-assets] mob images: ${imageCount}`);

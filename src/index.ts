@@ -14,6 +14,7 @@ import { MobModelExtractor } from "./extraction/mobModelExtractor.js";
 import { MobSoundExtractor } from "./extraction/mobSoundExtractor.js";
 import { RenderDataExtractor } from "./extraction/renderDataExtractor.js";
 import { AnvilMechanicsExtractor } from "./extraction/anvilMechanicsExtractor.js";
+import { SulfurCubeExtractor } from "./extraction/sulfurCubeExtractor.js";
 import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
 import { FetchLatestWorkflow } from "./orchestrators/fetchLatest.js";
@@ -42,6 +43,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const mobSoundMinecraftWiki = new MinecraftWikiMobSoundSource(http, cache, logger, config.urls.minecraftWikiApi);
   const sourceExtractor = new DecompiledSourceExtractor(logger);
   const anvilMechanicsExtractor = new AnvilMechanicsExtractor(logger);
+  const sulfurCubeExtractor = new SulfurCubeExtractor(logger);
   const datasetStore = new DatasetStore(config.workspace, logger);
   const diffEngine = new DiffEngine();
   const newsWatcher = new MinecraftNewsWatcher(http, cache, config, logger);
@@ -58,6 +60,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mobSoundMinecraftWiki,
     sourceExtractor,
     anvilMechanicsExtractor,
+    sulfurCubeExtractor,
     datasetStore,
     state,
     config,
@@ -83,6 +86,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     mobSoundMinecraftWiki,
     sourceExtractor,
     anvilMechanicsExtractor,
+    sulfurCubeExtractor,
     datasetStore,
     diffEngine,
     newsWatcher,

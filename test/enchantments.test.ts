@@ -62,11 +62,7 @@ describe("enchantment enrichment", () => {
       "minecraft:netherite_spear",
       "minecraft:netherite_sword",
     ]);
-    expect(sharpness?.primaryItemIds).toEqual([
-      "minecraft:iron_sword",
-      "minecraft:netherite_spear",
-      "minecraft:netherite_sword",
-    ]);
+    expect(sharpness?.primaryItemIds).toEqual(["minecraft:iron_sword", "minecraft:netherite_spear", "minecraft:netherite_sword"]);
     // The exclusive set contains sharpness itself; self is filtered out.
     expect(sharpness?.exclusiveSetIds).toEqual(["minecraft:smite"]);
     expect(sharpness?.minCost).toEqual({ base: 1, perLevelAboveFirst: 11 });
