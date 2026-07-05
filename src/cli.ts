@@ -30,6 +30,7 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   "mob-images": (dataset) => dataset.mobImages,
   "mob-models": (dataset) => dataset.mobModels,
   "mob-profiles": (dataset) => dataset.mobProfiles ?? [],
+  "mob-animations": (dataset) => dataset.mobAnimations ?? [],
   "mob-sounds": (dataset) => dataset.mobSounds,
   "render-data": (dataset) => dataset.renderData,
   blockstates: (dataset) => dataset.renderData?.blockstates ?? [],

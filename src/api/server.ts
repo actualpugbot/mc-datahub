@@ -298,6 +298,8 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
       return { responseKey: "mobImages", entries: filterMobImages(dataset.mobImages, id, query) };
     case "mob-models":
       return { responseKey: "mobModels", entries: filterMobModels(dataset.mobModels, id, query) };
+    case "mob-animations":
+      return { responseKey: "mobAnimations", entries: filterMobAnimations(dataset.mobAnimations ?? [], id, query) };
     case "mob-sounds":
       return { responseKey: "mobSounds", entries: filterMobSounds(dataset.mobSounds, id, query) };
     case "mob-profiles":
@@ -332,6 +334,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       biomes: dataset.biomes.length,
       mobImages: dataset.mobImages.length,
       mobModels: dataset.mobModels.length,
+      mobAnimations: dataset.mobAnimations?.length ?? 0,
       mobSounds: dataset.mobSounds.length,
       mobProfiles: dataset.mobProfiles?.length ?? 0,
     },
@@ -367,6 +370,7 @@ function summarizeDiff(diff: ReturnType<DiffEngine["compare"]>): Record<string, 
       biomes: summarize(diff.biomes),
       mobImages: summarize(diff.mobImages),
       mobModels: summarize(diff.mobModels),
+      mobAnimations: summarize(diff.mobAnimations),
       mobSounds: summarize(diff.mobSounds),
       mobProfiles: summarize(diff.mobProfiles),
     },
@@ -541,6 +545,31 @@ function filterMobModels<
     const normalizedQuery = query.toLowerCase();
     return entries.filter((entry) =>
       [entry.id, entry.localId, entry.displayName, entry.rendererClass ?? "", ...entry.modelLayers, ...entry.texturePaths].some(
+        (value) => value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }
+
+  return entries;
+}
+function filterMobAnimations<
+  T extends {
+    id: string;
+    localId: string;
+    displayName: string;
+    modelClass?: string;
+    clips: { name: string }[];
+  },
+>(entries: T[], id?: string, query?: string): T[] {
+  if (id) {
+    const normalizedId = normalizeMinecraftId(id);
+    return entries.filter((entry) => entry.id === normalizedId || normalizeMinecraftId(entry.localId) === normalizedId);
+  }
+
+  if (query) {
+    const normalizedQuery = query.toLowerCase();
+    return entries.filter((entry) =>
+      [entry.id, entry.localId, entry.displayName, entry.modelClass ?? "", ...entry.clips.map((clip) => clip.name)].some(
         (value) => value.toLowerCase().includes(normalizedQuery),
       ),
     );

@@ -48,6 +48,7 @@ workspace/
     mob-images/         Exported mob entity PNG files
     mob-models.json     Source-derived model layers, cubes, pivots, and skin UVs
     mob-profiles.json   Per-mob stat + drops/sounds/images/tags breakdown
+    mob-animations.json Source-derived animation clips (keyframe + baked setupAnim)
     models.json
     palettes.json
   diffs/
@@ -67,6 +68,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `mob-images.json` plus `mob-images/`: mob image metadata and exported representative entity PNG files
 - `mob-models.json`: source-derived mob model layers with exact cube geometry, pivots, rotations, texture sizes, renderer texture assets, and per-face UV rectangles for 3D rendering
 - `mob-profiles.json`: one profile per rendered mob (89 in 26.2), joining source-derived gameplay stats with the render/sound/loot/tag data so a consumer can build a full mob page from a single read — `mobCategory`, `hostility` (`hostile`/`neutral`/`passive`/`boss`), `spawnsInPeaceful`, `fireImmune`, `dimensions` (width/height/eyeHeight), `experience`, `clientTrackingRange`, the resolved `attributes` array plus convenience scalars (`maxHealth`, `movementSpeed`, `attackDamage`, `armor`, `knockbackResistance`, `followRange`), and joined `drops`, `sounds`, `images`, `modelLayerIds`, `tags`, and `spawnEgg`. Attribute values resolve through the vanilla `createAttributes` inheritance chain (bare `.add(Attributes.X)` calls fall back to the `Attributes.java` registry default). Fields that cannot be derived statically (e.g. size-scaled slime health, randomized horse health) carry a `warnings` entry instead of being silently omitted, and stat-less mobs still emit an aggregation-only profile.
+- `mob-animations.json`: source-derived mob animation clips for the 3D mob viewer — lossless pass-throughs of Java `AnimationDefinition` keyframe clips plus procedural `setupAnim` bodies baked (idle/walk/aggressive presets) into per-bone tracks. Each clip is `{ name, source: "keyframe" | "baked", lengthSeconds, loop, trigger, bones: [{ bone, rotation?, position?, scale? }] }`; keyframe values are absolute local transforms (rotation = Euler XYZ radians, position = ModelPart units, scale = per-axis factor) in the same space as the matching `mob-models.json` bone base pose, so a consumer initializes each bone to its base pose and applies the tracks directly. Bone names match `mob-models.json` part names. Mobs whose `setupAnim` cannot be transpiled faithfully are marked `partial`/`unresolved` with warnings instead of guessed. See [docs/CONSUMING_MOB_ANIMATIONS.md](docs/CONSUMING_MOB_ANIMATIONS.md) for a step-by-step three.js integration guide.
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
@@ -105,6 +107,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 - `GET /versions/:version/dataset` — the full combined dataset in one response
 - `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
 - `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds,mob-profiles}`
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-animations,mob-sounds}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
 
 Every collection endpoint supports `?id=` (exact id) or `?q=` (substring) filtering and `?limit=`/`?offset=` pagination; `tags` also supports `?registry=`. A real OpenAPI 3.1 document is served at `GET /openapi.json` for Swagger UI and client codegen.
@@ -141,6 +144,7 @@ npm run cli -- api serve --port 4000
 `versions list` reports which versions already have a processed dataset on disk.
 
 `dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `sulfur-cube`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, `mob-profiles`, or the full `dataset`) to stdout or a `--output` file.
+`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-animations`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 

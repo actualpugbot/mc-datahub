@@ -463,6 +463,70 @@ export interface MobProfileDefinition {
   warnings: string[];
 }
 
+export type MobAnimationInterpolation = "linear" | "catmullrom";
+export type MobAnimationChannelTarget = "rotation" | "position" | "scale";
+export type MobAnimationClipSource = "keyframe" | "baked";
+
+export interface MobAnimationKeyframe {
+  /** Seconds from clip start. */
+  t: number;
+  /**
+   * Absolute local transform for this channel, in the same space as the
+   * matching part's base pose in mob-models.json:
+   * `rotation` = Euler XYZ radians, `position` = ModelPart-space translation,
+   * `scale` = per-axis factor (1 = unscaled). Consumers set the bone's
+   * transform directly (no need to add the base pose).
+   */
+  value: [number, number, number];
+  interp: MobAnimationInterpolation;
+}
+
+/** Per-bone animated channels; each channel is an independent keyframe track. */
+export interface MobAnimationBoneTrack {
+  /** Bone name; matches a part `name` in the mob's mob-models.json layer tree. */
+  bone: string;
+  rotation?: MobAnimationKeyframe[];
+  position?: MobAnimationKeyframe[];
+  scale?: MobAnimationKeyframe[];
+  /** Visibility toggles when setupAnim drives the bone's `visible` flag off its default. */
+  visibility?: { t: number; value: boolean }[];
+}
+
+export interface MobAnimationClip {
+  /** Clip label, e.g. "idle", "walk", "croak", "emerge". */
+  name: string;
+  /**
+   * `keyframe` = lossless pass-through of a Java `AnimationDefinition`;
+   * `baked` = sampled from executing the model's procedural `setupAnim`.
+   */
+  source: MobAnimationClipSource;
+  /** For keyframe clips, the Java constant, e.g. "FrogAnimation.FROG_CROAK". */
+  definition?: string;
+  lengthSeconds: number;
+  loop: boolean;
+  /** For baked clips whose inputs have no clean common period; the loop point is a best-fit. */
+  approximateLoop?: boolean;
+  /** How the game triggers the clip (best-effort): "walk", "idle", "state", "static". */
+  trigger?: string;
+  /** Render-state fields whose non-default value drove this baked clip. */
+  inputsUsed?: string[];
+  bones: MobAnimationBoneTrack[];
+  warnings: string[];
+}
+
+export interface MobAnimationDefinition {
+  id: string;
+  localId: string;
+  displayName: string;
+  /** Concrete client model class whose setupAnim / animation references were analyzed. */
+  modelClass?: string;
+  /** mob-models.json layer id whose base pose these clips animate. */
+  modelLayer?: string;
+  clips: MobAnimationClip[];
+  status: "baked" | "partial" | "unresolved";
+  warnings: string[];
+}
+
 export type RenderProvenanceKind = "asset" | "generated-report" | "client-source" | "derived" | "fallback";
 
 export interface RenderProvenance {
@@ -1149,6 +1213,8 @@ export interface VersionDataset {
   mobModels: MobModelDefinition[];
   /** Baked LayerDefinitions geometry for block entities without data-driven block models (chest, shulker box, conduit, banner, decorated pot, bell). Optional so older datasets still load. */
   blockEntityModels?: MobModelDefinition[];
+  /** Source-derived mob animation clips (keyframe pass-through + baked procedural setupAnim). Optional so older datasets still load. */
+  mobAnimations?: MobAnimationDefinition[];
   mobSounds: MobSoundDefinition[];
   /** Source-derived per-mob profiles (stats + aggregated render/sound/loot/tag data). Optional so older datasets still load. */
   mobProfiles?: MobProfileDefinition[];
@@ -1196,6 +1262,7 @@ export interface VersionDiff {
   biomes: CollectionDiff<BiomeDefinition>;
   mobImages: CollectionDiff<MobImageDefinition>;
   mobModels: CollectionDiff<MobModelDefinition>;
+  mobAnimations: CollectionDiff<MobAnimationDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
   mobProfiles: CollectionDiff<MobProfileDefinition>;
 }
