@@ -94,6 +94,7 @@ export class MinecraftDataExtractor {
       mobImages: [],
       mobSounds: [],
       mobModels: [],
+      mobAnimations: [],
     };
   }
 

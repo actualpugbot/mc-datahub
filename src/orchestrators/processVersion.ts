@@ -21,6 +21,7 @@ import type { MobSoundDefinition } from "../domain/types.js";
 import type { RenderDataExtractor } from "../extraction/renderDataExtractor.js";
 import type { AnvilMechanicsExtractor } from "../extraction/anvilMechanicsExtractor.js";
 import type { SulfurCubeExtractor } from "../extraction/sulfurCubeExtractor.js";
+import type { MobAnimationExtractor } from "../extraction/mobAnimationExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 import { validateRenderDataset } from "../validation/renderValidation.js";
 
@@ -46,6 +47,7 @@ export class ProcessVersionWorkflow {
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly anvilMechanicsExtractor: AnvilMechanicsExtractor,
     private readonly sulfurCubeExtractor: SulfurCubeExtractor,
+    private readonly mobAnimationExtractor: MobAnimationExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
     private readonly config: AppConfig,
@@ -114,6 +116,7 @@ export class ProcessVersionWorkflow {
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.mobModels = mobModels;
     dataset.blockEntityModels = blockEntityModels;
+    dataset.mobAnimations = await this.mobAnimationExtractor.extract(mobModels, decompiledClientRoot);
     dataset.renderData = await this.renderDataExtractor.extract(manifestEntry.id, sources, {
       translations: dataset.translations,
       blocks: dataset.blocks,

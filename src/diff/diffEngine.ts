@@ -11,6 +11,7 @@ import type {
   ItemStatDefinition,
   LootTableDefinition,
   ModelDefinition,
+  MobAnimationDefinition,
   MobImageDefinition,
   MobModelDefinition,
   MobProfileDefinition,
@@ -52,6 +53,7 @@ export class DiffEngine {
       mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
       mobModels: this.diffCollection<MobModelDefinition>(from.mobModels, to.mobModels),
       mobProfiles: this.diffCollection<MobProfileDefinition>(from.mobProfiles ?? [], to.mobProfiles ?? []),
+      mobAnimations: this.diffCollection<MobAnimationDefinition>(from.mobAnimations ?? [], to.mobAnimations ?? []),
     };
   }
 

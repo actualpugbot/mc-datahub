@@ -91,6 +91,28 @@ describe("dataset store", () => {
           layers: [],
         },
       ],
+      mobAnimations: [
+        {
+          id: "minecraft:allay",
+          localId: "allay",
+          displayName: "Allay",
+          modelClass: "AllayModel",
+          modelLayer: "allay",
+          status: "baked",
+          warnings: [],
+          clips: [
+            {
+              name: "idle",
+              source: "baked",
+              lengthSeconds: 1.5,
+              loop: true,
+              trigger: "idle",
+              bones: [{ bone: "body", rotation: [{ t: 0, value: [0, 0, 0], interp: "linear" }] }],
+              warnings: [],
+            },
+          ],
+        },
+      ],
       mobSounds: [],
       mobSoundMinecraftWiki: {
         source: "minecraft.wiki",
@@ -142,6 +164,7 @@ describe("dataset store", () => {
     expect(loaded.textures[0]?.imagePath).toBe("images/block/oak_planks.png");
     expect(loaded.mobModels[0]?.textureAssets[0]?.imagePath).toBe("images/entity/allay/allay.png");
     expect(loaded.mobImages[0]?.imagePath).toBe("mob-images/allay/allay.png");
+    expect(loaded.mobAnimations?.[0]?.clips[0]?.name).toBe("idle");
     expect(loaded.mobSoundMinecraftWiki?.categories[0]?.id).toBe("allay");
   });
 

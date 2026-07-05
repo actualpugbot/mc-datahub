@@ -38,6 +38,11 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     key: "mobModels",
     summary: "Mob model layers, renderer texture assets, exact cube geometry, and skin UV rectangles.",
   },
+  {
+    slug: "mob-animations",
+    key: "mobAnimations",
+    summary: "Source-derived mob animation clips: keyframe pass-throughs and baked procedural setupAnim, as per-bone tracks.",
+  },
   { slug: "mob-sounds", key: "mobSounds", summary: "Mob sound metadata and variant references." },
   {
     slug: "mob-profiles",
