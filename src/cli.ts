@@ -29,6 +29,7 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   banners: (dataset) => dataset.banners ?? { patterns: [], colors: [] },
   "mob-images": (dataset) => dataset.mobImages,
   "mob-models": (dataset) => dataset.mobModels,
+  "mob-profiles": (dataset) => dataset.mobProfiles ?? [],
   "mob-sounds": (dataset) => dataset.mobSounds,
   "render-data": (dataset) => dataset.renderData,
   blockstates: (dataset) => dataset.renderData?.blockstates ?? [],

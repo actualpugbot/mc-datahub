@@ -339,6 +339,130 @@ export interface MobModelDefinition {
   layers: MobModelLayerDefinition[];
 }
 
+/** One resolved base attribute on a mob (health, speed, damage, …). */
+export interface MobAttributeValue {
+  /** Attribute registry key, e.g. `max_health`, `movement_speed`, `attack_damage`. */
+  attribute: string;
+  /** The Java constant referenced in `createAttributes`, e.g. `MAX_HEALTH`. */
+  constant: string;
+  /** Resolved base value. */
+  value: number;
+  /**
+   * Where `value` came from:
+   * - `mob`: the entity's own `createAttributes()` set an explicit number.
+   * - `inherited`: an ancestor builder (`createMonsterAttributes`, …) set the number.
+   * - `default`: the attribute was `.add(Attributes.X)` with no number, so the value is the
+   *   `RangedAttribute` registry default from `Attributes.java`.
+   */
+  origin: "mob" | "inherited" | "default";
+}
+
+export interface MobDimensionsDefinition {
+  /** Adult hitbox width in blocks. */
+  width: number;
+  /** Adult hitbox height in blocks. */
+  height: number;
+  /** Eye height in blocks, when the EntityType registration overrides the default. */
+  eyeHeight?: number;
+}
+
+/** Base experience dropped on death; `variable` marks source-computed (size/baby-scaled) rewards. */
+export interface MobExperienceDefinition {
+  /** Flat base value when the source assigns a constant `xpReward`. */
+  value?: number;
+  /** True when the reward is computed at runtime (e.g. slime size, baby multiplier, equipment). */
+  variable: boolean;
+  /** Human-readable note explaining a variable or inherited reward. */
+  note?: string;
+}
+
+/** Loot-table-derived drop summary; full loot logic stays in `loot-tables.json`. */
+export interface MobDropSummary {
+  /** Loot table id, e.g. `minecraft:entities/cow`. */
+  lootTableId: string;
+  /** Distinct item ids the table can drop. */
+  itemDrops: string[];
+  /** Loot functions the table uses, e.g. `minecraft:looting_enchant`, `minecraft:furnace_smelt`. */
+  functions: string[];
+}
+
+/** Sound-event summary; full variant/asset data stays in `mob-sounds.json`. */
+export interface MobSoundSummary {
+  /** Number of distinct sound events. */
+  eventCount: number;
+  /** Sound event ids, e.g. `entity.cow.ambient`, `entity.cow.hurt`. */
+  events: string[];
+}
+
+/** Representative + variant image paths; full metadata stays in `mob-images.json`. */
+export interface MobImageSummary {
+  /** Dataset-relative representative image, e.g. `mob-images/cow/cow.png`. */
+  imagePath?: string;
+  /** All dataset-relative texture-variant image paths. */
+  variantImagePaths: string[];
+}
+
+/** Behavior classification derived from the entity class hierarchy. */
+export type MobHostility = "hostile" | "neutral" | "passive" | "boss" | "unknown";
+
+/**
+ * A per-mob profile: source-derived gameplay stats joined with the render/sound/loot/tag data
+ * already extracted elsewhere. Heavy collections (full sounds, model geometry, loot logic) are
+ * referenced by id/path rather than duplicated, so this stays a lean, consumable "breakdown".
+ */
+export interface MobProfileDefinition {
+  /** Registry id, e.g. `minecraft:cow`. */
+  id: string;
+  /** Id without the `minecraft:` namespace, e.g. `cow`. */
+  localId: string;
+  /** en_us display name, e.g. `Cow`. */
+  displayName: string;
+  /** Spawn/mob category from the EntityType registration, e.g. `CREATURE`, `MONSTER`. */
+  mobCategory?: string;
+  /** Behavior classification from the class hierarchy (Monster/Enemy → hostile, NeutralMob → neutral, …). */
+  hostility: MobHostility;
+  /** False when the EntityType is flagged `notInPeaceful()` (despawns on Peaceful difficulty). */
+  spawnsInPeaceful?: boolean;
+  /** Fire immunity from `EntityType.Builder.fireImmune()`. */
+  fireImmune: boolean;
+  /** Adult hitbox dimensions from `EntityType.Builder.sized()/eyeHeight()`. */
+  dimensions?: MobDimensionsDefinition;
+  /** Base experience dropped on death. */
+  experience?: MobExperienceDefinition;
+  /** Network client tracking range in chunks, from `EntityType.Builder.clientTrackingRange()`. */
+  clientTrackingRange?: number;
+  /** All resolved base attributes, in source order. */
+  attributes: MobAttributeValue[];
+  /** Convenience scalar for `max_health`; omitted when the mob has no such attribute. */
+  maxHealth?: number;
+  /** Convenience scalar for `movement_speed`. */
+  movementSpeed?: number;
+  /** Convenience scalar for `attack_damage`. */
+  attackDamage?: number;
+  /** Convenience scalar for `armor`. */
+  armor?: number;
+  /** Convenience scalar for `knockback_resistance`. */
+  knockbackResistance?: number;
+  /** Convenience scalar for `follow_range`. */
+  followRange?: number;
+  /** Loot-table-derived drops, joined from `minecraft:entities/<localId>`. */
+  drops?: MobDropSummary;
+  /** Sound-event summary; full data in `mob-sounds.json`. */
+  sounds?: MobSoundSummary;
+  /** Representative + variant image paths; full data in `mob-images.json`. */
+  images?: MobImageSummary;
+  /** Model layer ids for 3D rendering; full geometry in `mob-models.json`. */
+  modelLayerIds: string[];
+  /** `entity_type` registry tags this mob belongs to, e.g. `minecraft:followable_friendly_mobs`. */
+  tags: string[];
+  /** Spawn egg item id when one exists, e.g. `minecraft:cow_spawn_egg`. */
+  spawnEgg?: string;
+  /** Decompiled entity class this profile was derived from, e.g. `net/minecraft/.../cow/Cow.java`. */
+  sourceClass?: string;
+  /** Non-fatal extraction gaps, never silently omitted (mirrors the mob-model `warnings` convention). */
+  warnings: string[];
+}
+
 export type RenderProvenanceKind = "asset" | "generated-report" | "client-source" | "derived" | "fallback";
 
 export interface RenderProvenance {
@@ -1026,6 +1150,8 @@ export interface VersionDataset {
   /** Baked LayerDefinitions geometry for block entities without data-driven block models (chest, shulker box, conduit, banner, decorated pot, bell). Optional so older datasets still load. */
   blockEntityModels?: MobModelDefinition[];
   mobSounds: MobSoundDefinition[];
+  /** Source-derived per-mob profiles (stats + aggregated render/sound/loot/tag data). Optional so older datasets still load. */
+  mobProfiles?: MobProfileDefinition[];
   /** Source-derived anvil combine/repair mechanics. Optional so older datasets still load. */
   anvilMechanics?: AnvilMechanicsDefinition;
   /** Source-derived Sulfur Cube archetypes and the blocks that select them. Optional so older datasets still load. */
@@ -1071,6 +1197,7 @@ export interface VersionDiff {
   mobImages: CollectionDiff<MobImageDefinition>;
   mobModels: CollectionDiff<MobModelDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
+  mobProfiles: CollectionDiff<MobProfileDefinition>;
 }
 
 export interface ToolStepResult {
