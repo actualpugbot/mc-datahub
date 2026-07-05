@@ -300,6 +300,8 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
       return { responseKey: "mobModels", entries: filterMobModels(dataset.mobModels, id, query) };
     case "mob-sounds":
       return { responseKey: "mobSounds", entries: filterMobSounds(dataset.mobSounds, id, query) };
+    case "mob-profiles":
+      return { responseKey: "mobProfiles", entries: filterMobProfiles(dataset.mobProfiles ?? [], id, query) };
     default:
       return undefined;
   }
@@ -331,6 +333,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       mobImages: dataset.mobImages.length,
       mobModels: dataset.mobModels.length,
       mobSounds: dataset.mobSounds.length,
+      mobProfiles: dataset.mobProfiles?.length ?? 0,
     },
   };
 }
@@ -365,6 +368,7 @@ function summarizeDiff(diff: ReturnType<DiffEngine["compare"]>): Record<string, 
       mobImages: summarize(diff.mobImages),
       mobModels: summarize(diff.mobModels),
       mobSounds: summarize(diff.mobSounds),
+      mobProfiles: summarize(diff.mobProfiles),
     },
   };
 }
@@ -562,6 +566,32 @@ function filterMobSounds<
     const normalizedQuery = query.toLowerCase();
     return entries.filter((entry) =>
       [entry.id, entry.localId, entry.displayName, entry.category, entry.soundId].some((value) =>
+        value.toLowerCase().includes(normalizedQuery),
+      ),
+    );
+  }
+
+  return entries;
+}
+
+function filterMobProfiles<
+  T extends {
+    id: string;
+    localId: string;
+    displayName: string;
+    mobCategory?: string;
+    hostility: string;
+  },
+>(entries: T[], id?: string, query?: string): T[] {
+  if (id) {
+    const normalizedId = normalizeMinecraftId(id);
+    return entries.filter((entry) => entry.id === normalizedId || normalizeMinecraftId(entry.localId) === normalizedId);
+  }
+
+  if (query) {
+    const normalizedQuery = query.toLowerCase();
+    return entries.filter((entry) =>
+      [entry.id, entry.localId, entry.displayName, entry.mobCategory ?? "", entry.hostility].some((value) =>
         value.toLowerCase().includes(normalizedQuery),
       ),
     );

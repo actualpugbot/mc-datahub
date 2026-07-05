@@ -13,6 +13,7 @@
 - Derives source-based `item-stats` and `block-properties` datasets from decompiled client source when available.
 - Exports extracted texture PNGs alongside each versioned dataset.
 - Derives mob image metadata from client entity renderers and exports representative mob PNGs.
+- Builds per-mob profiles: source-derived gameplay stats (health, attack, armor, speed, XP, spawn category, hitbox, fire immunity, hostility) joined with each mob's drops, sounds, images, model layers, tags, and spawn egg.
 - Derives extracted and curated palette presets from vanilla trim palettes and biome colormaps.
 - Compares datasets between versions and writes structured diffs.
 - Serves extracted datasets over HTTP.
@@ -46,6 +47,7 @@ workspace/
     mob-images.json
     mob-images/         Exported mob entity PNG files
     mob-models.json     Source-derived model layers, cubes, pivots, and skin UVs
+    mob-profiles.json   Per-mob stat + drops/sounds/images/tags breakdown
     models.json
     palettes.json
   diffs/
@@ -64,6 +66,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `textures.json` plus `images/`: texture metadata and exported PNG files
 - `mob-images.json` plus `mob-images/`: mob image metadata and exported representative entity PNG files
 - `mob-models.json`: source-derived mob model layers with exact cube geometry, pivots, rotations, texture sizes, renderer texture assets, and per-face UV rectangles for 3D rendering
+- `mob-profiles.json`: one profile per rendered mob (89 in 26.2), joining source-derived gameplay stats with the render/sound/loot/tag data so a consumer can build a full mob page from a single read — `mobCategory`, `hostility` (`hostile`/`neutral`/`passive`/`boss`), `spawnsInPeaceful`, `fireImmune`, `dimensions` (width/height/eyeHeight), `experience`, `clientTrackingRange`, the resolved `attributes` array plus convenience scalars (`maxHealth`, `movementSpeed`, `attackDamage`, `armor`, `knockbackResistance`, `followRange`), and joined `drops`, `sounds`, `images`, `modelLayerIds`, `tags`, and `spawnEgg`. Attribute values resolve through the vanilla `createAttributes` inheritance chain (bare `.add(Attributes.X)` calls fall back to the `Attributes.java` registry default). Fields that cannot be derived statically (e.g. size-scaled slime health, randomized horse health) carry a `warnings` entry instead of being silently omitted, and stat-less mobs still emit an aggregation-only profile.
 - `palettes.json`: extracted and curated color palettes
 - `item-stats.json`: source-derived stack size, durability, food stats, rarity, fire resistance, and tool or armor stats
 - `block-properties.json`: source-derived destroy time, explosion resistance, light emission, push reaction, and behavior flags
@@ -101,7 +104,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 - `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
 - `GET /versions/:version/dataset` — the full combined dataset in one response
 - `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
-- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds}`
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds,mob-profiles}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
 
 Every collection endpoint supports `?id=` (exact id) or `?q=` (substring) filtering and `?limit=`/`?offset=` pagination; `tags` also supports `?registry=`. A real OpenAPI 3.1 document is served at `GET /openapi.json` for Swagger UI and client codegen.
@@ -137,7 +140,7 @@ npm run cli -- api serve --port 4000
 
 `versions list` reports which versions already have a processed dataset on disk.
 
-`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `sulfur-cube`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, or the full `dataset`) to stdout or a `--output` file.
+`dump collection <collection> <version>` writes any processed collection (`blocks`, `items`, `item-stats`, `block-properties`, `recipes`, `models`, `textures`, `enchantments`, `sulfur-cube`, `tags`, `loot-tables`, `advancements`, `translations`, `palettes`, `mob-images`, `mob-models`, `mob-sounds`, `mob-profiles`, or the full `dataset`) to stdout or a `--output` file.
 
 `dump recipes` prefers an already processed dataset and falls back to extracting directly from downloaded `client.jar` and `server.jar` files when needed.
 

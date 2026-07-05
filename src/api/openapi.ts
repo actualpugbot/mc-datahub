@@ -39,6 +39,12 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     summary: "Mob model layers, renderer texture assets, exact cube geometry, and skin UV rectangles.",
   },
   { slug: "mob-sounds", key: "mobSounds", summary: "Mob sound metadata and variant references." },
+  {
+    slug: "mob-profiles",
+    key: "mobProfiles",
+    summary:
+      "Per-mob profiles: source-derived stats (health/damage/armor/XP/category/dimensions) joined with drops, sounds, images, model layers, tags, and spawn egg.",
+  },
   { slug: "palettes", key: "palettes", summary: "Extracted and curated color palettes." },
 ];
 

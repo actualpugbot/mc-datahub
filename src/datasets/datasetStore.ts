@@ -18,6 +18,7 @@ import type {
   MinecraftRenderDataset,
   MobImageDefinition,
   MobModelDefinition,
+  MobProfileDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   ResourcePackDefinition,
@@ -151,6 +152,11 @@ export class DatasetStore {
         minecraftWiki: dataset.mobSoundMinecraftWiki,
         mobs: dataset.mobSounds,
       }),
+      writeJsonFile(join(directory, "mob-profiles.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        mobs: dataset.mobProfiles ?? [],
+      }),
       ...(dataset.mobSoundMinecraftWiki
         ? [writeJsonFile(join(directory, "mob-sounds-minecraft-wiki.json"), dataset.mobSoundMinecraftWiki)]
         : []),
@@ -175,6 +181,7 @@ export class DatasetStore {
         biomes?: BiomeDefinition[];
         mobImages?: MobImageDefinition[];
         mobModels?: MobModelDefinition[];
+        mobProfiles?: MobProfileDefinition[];
         mobSounds?: MobSoundDefinition[];
         mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
         renderData?: MinecraftRenderDataset;
@@ -188,6 +195,7 @@ export class DatasetStore {
       dataset.blockEntityModels ?? (await this.loadBlockEntityModelSidecar(directory)),
     );
     const renderData = dataset.renderData ?? (await this.loadRenderDataSidecar(directory, dataset.version, dataset.generatedAt));
+    const mobProfiles = dataset.mobProfiles ?? (await this.loadMobProfileSidecar(directory));
 
     return {
       ...dataset,
@@ -209,6 +217,7 @@ export class DatasetStore {
       mobModels,
       blockEntityModels,
       mobSounds: dataset.mobSounds ?? [],
+      mobProfiles,
       renderData,
       mobSoundMinecraftWiki: dataset.mobSoundMinecraftWiki,
       resourcePack: dataset.resourcePack,
@@ -255,6 +264,16 @@ export class DatasetStore {
     }
 
     const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
+    return Array.isArray(payload) ? payload : (payload.mobs ?? []);
+  }
+
+  private async loadMobProfileSidecar(directory: string): Promise<MobProfileDefinition[]> {
+    const path = join(directory, "mob-profiles.json");
+    if (!(await fileExists(path))) {
+      return [];
+    }
+
+    const payload = await readJsonFile<{ mobs?: MobProfileDefinition[] } | MobProfileDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
   }
 

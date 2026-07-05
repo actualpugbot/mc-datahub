@@ -13,6 +13,7 @@ import type {
   ModelDefinition,
   MobImageDefinition,
   MobModelDefinition,
+  MobProfileDefinition,
   MobSoundDefinition,
   PaletteDefinition,
   RecipeDefinition,
@@ -50,6 +51,7 @@ export class DiffEngine {
       mobImages: this.diffCollection<MobImageDefinition>(from.mobImages, to.mobImages),
       mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
       mobModels: this.diffCollection<MobModelDefinition>(from.mobModels, to.mobModels),
+      mobProfiles: this.diffCollection<MobProfileDefinition>(from.mobProfiles ?? [], to.mobProfiles ?? []),
     };
   }
 
