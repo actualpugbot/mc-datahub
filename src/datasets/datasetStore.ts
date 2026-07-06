@@ -1,7 +1,7 @@
 import type { ArchiveSource } from "../archive/archiveSource.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { ensureDir, fileExists, readJsonFile, writeBufferFile, writeJsonFile } from "../core/fs.js";
+import { ensureDir, fileExists, readJsonFile, writeBufferFile, writeJsonFile, writeTextFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
 import { encodePng, type RgbColor } from "../extraction/png.js";
@@ -22,8 +22,13 @@ import type {
   MobProfileDefinition,
   MobSoundDefinition,
   PaletteDefinition,
+  ProcessorListDefinition,
   ResourcePackDefinition,
+  StructureDataBundle,
+  StructureDefinition,
+  StructureTemplateDefinition,
   TagDefinition,
+  TemplatePoolDefinition,
   TextureDefinition,
   TranslationEntry,
   VersionDataset,
@@ -126,6 +131,7 @@ export class DatasetStore {
         patterns: dataset.banners?.patterns ?? [],
         colors: dataset.banners?.colors ?? [],
       }),
+      ...structureWrites(directory, dataset),
       writeJsonFile(join(directory, "translations.json"), {
         version: dataset.version,
         generatedAt: dataset.generatedAt,
@@ -204,6 +210,16 @@ export class DatasetStore {
     const mobAnimations = dataset.mobAnimations ?? (await this.loadMobAnimationSidecar(directory));
     const renderData = dataset.renderData ?? (await this.loadRenderDataSidecar(directory, dataset.version, dataset.generatedAt));
     const mobProfiles = dataset.mobProfiles ?? (await this.loadMobProfileSidecar(directory));
+    const structures =
+      dataset.structures ?? (await this.loadCollectionSidecar<StructureDefinition>(directory, "structures.json", "structures"));
+    const templatePools =
+      dataset.templatePools ?? (await this.loadCollectionSidecar<TemplatePoolDefinition>(directory, "template-pools.json", "pools"));
+    const processorLists =
+      dataset.processorLists ??
+      (await this.loadCollectionSidecar<ProcessorListDefinition>(directory, "processor-lists.json", "processorLists"));
+    const structureTemplates =
+      dataset.structureTemplates ??
+      (await this.loadCollectionSidecar<StructureTemplateDefinition>(directory, "structure-templates.json", "templates"));
 
     return {
       ...dataset,
@@ -221,6 +237,10 @@ export class DatasetStore {
       translations: dataset.translations ?? [],
       biomes,
       banners,
+      structures,
+      templatePools,
+      processorLists,
+      structureTemplates,
       mobImages: dataset.mobImages ?? [],
       mobModels,
       blockEntityModels,
@@ -304,6 +324,16 @@ export class DatasetStore {
 
     const payload = await readJsonFile<{ mobs?: MobAnimationDefinition[] } | MobAnimationDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
+  }
+
+  private async loadCollectionSidecar<T>(directory: string, fileName: string, key: string): Promise<T[]> {
+    const path = join(directory, fileName);
+    if (!(await fileExists(path))) {
+      return [];
+    }
+
+    const payload = await readJsonFile<Record<string, T[] | undefined> | T[]>(path);
+    return Array.isArray(payload) ? payload : (payload[key] ?? []);
   }
 
   private async loadRenderDataSidecar(
@@ -491,6 +521,38 @@ export class DatasetStore {
       }
     }
   }
+}
+
+/** The four structure-generation sidecar writes shared by saveDataset and the CLI dump. */
+export function structureFileWrites(
+  directory: string,
+  version: string,
+  generatedAt: string,
+  bundle: StructureDataBundle,
+): Promise<void>[] {
+  return [
+    writeJsonFile(join(directory, "structures.json"), { version, generatedAt, structures: bundle.structures }),
+    writeJsonFile(join(directory, "template-pools.json"), { version, generatedAt, pools: bundle.templatePools }),
+    writeJsonFile(join(directory, "processor-lists.json"), { version, generatedAt, processorLists: bundle.processorLists }),
+    // Compact JSON on purpose: the flat block runs make this file enormous when pretty-printed.
+    writeTextFile(
+      join(directory, "structure-templates.json"),
+      JSON.stringify({ version, generatedAt, templates: bundle.structureTemplates }),
+    ),
+  ];
+}
+
+function structureWrites(directory: string, dataset: VersionDataset): Promise<void>[] {
+  if (!dataset.structures) {
+    return [];
+  }
+
+  return structureFileWrites(directory, dataset.version, dataset.generatedAt, {
+    structures: dataset.structures,
+    templatePools: dataset.templatePools ?? [],
+    processorLists: dataset.processorLists ?? [],
+    structureTemplates: dataset.structureTemplates ?? [],
+  });
 }
 
 function toTimestampPathSegment(value: string): string {

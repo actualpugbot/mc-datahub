@@ -2,12 +2,15 @@
 
 import { join, resolve } from "node:path";
 import { Command } from "commander";
+import { MergedArchiveSource } from "./archive/archiveSource.js";
 import { ZipArchiveSource } from "./archive/zipArchiveSource.js";
 import { buildApiServer } from "./api/server.js";
 import { fileExists, readJsonFile, writeJsonFile } from "./core/fs.js";
 import { datasetVersionDir, versionDownloadsDir } from "./core/paths.js";
 import type { VersionDataset, VersionMetadata } from "./domain/types.js";
+import { structureFileWrites } from "./datasets/datasetStore.js";
 import { buildBanners } from "./extraction/banners.js";
+import { buildStructureData } from "./extraction/structures.js";
 import { createDefaultContext } from "./index.js";
 
 const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> = {
@@ -43,6 +46,10 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   "entity-models": (dataset) => dataset.renderData?.entityModels ?? [],
   "entity-renderers": (dataset) => dataset.renderData?.entityRenderers ?? [],
   "special-renderers": (dataset) => dataset.renderData?.specialRenderers ?? [],
+  structures: (dataset) => dataset.structures ?? [],
+  "template-pools": (dataset) => dataset.templatePools ?? [],
+  "processor-lists": (dataset) => dataset.processorLists ?? [],
+  "structure-templates": (dataset) => dataset.structureTemplates ?? [],
   dataset: (dataset) => dataset,
 };
 import { dumpBanners } from "./orchestrators/dumpBanners.js";
@@ -374,6 +381,52 @@ async function main(): Promise<void> {
       const bannerImagesDir = join(datasetVersionDir(context.config.workspace, version), "images", "entity", "banner");
       const result = await dumpBanners(payload, bannerImagesDir, outputDirectory);
       console.log(JSON.stringify(result, null, 2));
+    });
+
+  dumpCommand
+    .command("structures")
+    .argument("<version>", "Minecraft version id with downloaded client/server jars")
+    .option("--output <path>", "Write the structure collections to a directory instead of the dataset directory")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const downloadsDir = versionDownloadsDir(context.config.workspace, version);
+      const sources = [];
+      const clientJarPath = join(downloadsDir, "client.jar");
+      const serverJarPath = join(downloadsDir, "server.jar");
+
+      if (await fileExists(clientJarPath)) {
+        sources.push(new ZipArchiveSource(clientJarPath));
+      }
+
+      if (await fileExists(serverJarPath)) {
+        sources.push(new ZipArchiveSource(serverJarPath));
+      }
+
+      if (sources.length === 0) {
+        throw new Error(`No downloaded client.jar/server.jar was found for ${version}. Looked in ${downloadsDir}.`);
+      }
+
+      const merged = new MergedArchiveSource(sources);
+      const bundle = await buildStructureData(await merged.listPaths(), merged);
+      const directory = options.output
+        ? resolve(process.cwd(), options.output)
+        : datasetVersionDir(context.config.workspace, version);
+      await Promise.all(structureFileWrites(directory, version, new Date().toISOString(), bundle));
+      console.log(
+        JSON.stringify(
+          {
+            version,
+            outputDirectory: directory,
+            structures: bundle.structures.length,
+            jigsawStructures: bundle.structures.filter((structure) => structure.jigsaw).length,
+            templatePools: bundle.templatePools.length,
+            processorLists: bundle.processorLists.length,
+            structureTemplates: bundle.structureTemplates.length,
+          },
+          null,
+          2,
+        ),
+      );
     });
 
   const validateCommand = program.command("validate").description("Validate processed datasets.");

@@ -1222,6 +1222,14 @@ export interface VersionDataset {
   anvilMechanics?: AnvilMechanicsDefinition;
   /** Source-derived Sulfur Cube archetypes and the blocks that select them. Optional so older datasets still load. */
   sulfurCube?: SulfurCubeDataset;
+  /** Worldgen structure definitions (jigsaw config included). Optional so older datasets still load. */
+  structures?: StructureDefinition[];
+  /** Jigsaw template pools. Optional so older datasets still load. */
+  templatePools?: TemplatePoolDefinition[];
+  /** Worldgen processor lists. Optional so older datasets still load. */
+  processorLists?: ProcessorListDefinition[];
+  /** Decoded structure template NBTs. Optional so older datasets still load. */
+  structureTemplates?: StructureTemplateDefinition[];
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
   renderData?: MinecraftRenderDataset;
@@ -1294,4 +1302,96 @@ export interface StoredState {
       metadataPath: string;
     }
   >;
+}
+
+export interface StructureJigsawConfig {
+  startPool: string;
+  size: number;
+  startHeight: JsonValue;
+  maxDistanceFromCenter: number;
+  useExpansionHack: boolean;
+  projectStartToHeightmap?: string;
+  poolAliases?: JsonValue[];
+  dimensionPadding?: JsonValue;
+  liquidSettings?: string;
+}
+
+export interface StructureDefinition {
+  id: string;
+  key: string;
+  name: string;
+  /** Structure type id, e.g. `minecraft:jigsaw`; only jigsaw structures carry a `jigsaw` config. */
+  type: string;
+  step: string;
+  /** Raw biome spec: a `#tag` string or a list of biome ids. */
+  biomes: JsonValue;
+  jigsaw?: StructureJigsawConfig;
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+export interface TemplatePoolElementDefinition {
+  weight: number;
+  /** Pool element type id, e.g. `minecraft:single_pool_element`. */
+  elementType: string;
+  /** Structure template id for single/legacy elements. */
+  location?: string;
+  projection?: string;
+  /** Processor list id when the element references the registry. */
+  processors?: string;
+  /** Inline processor definition kept verbatim when not a registry reference. */
+  processorsInline?: JsonValue;
+  /** Placed feature id for feature_pool_element. */
+  feature?: string;
+  /** Child elements for list_pool_element; they place together. */
+  elements?: TemplatePoolElementDefinition[];
+  raw: JsonValue;
+}
+
+export interface TemplatePoolDefinition {
+  id: string;
+  key: string;
+  fallback: string;
+  elements: TemplatePoolElementDefinition[];
+  sourcePath: string;
+}
+
+export interface ProcessorListDefinition {
+  id: string;
+  key: string;
+  processors: JsonValue[];
+  sourcePath: string;
+}
+
+export interface StructureTemplateJigsaw {
+  pos: [number, number, number];
+  /** The jigsaw blockstate orientation, e.g. `north_up`. */
+  orientation: string;
+  name: string;
+  pool: string;
+  target: string;
+  finalState: string;
+  jointType: "rollable" | "aligned";
+  placementPriority: number;
+  selectionPriority: number;
+}
+
+export interface StructureTemplateDefinition {
+  id: string;
+  key: string;
+  size: [number, number, number];
+  /** One or more random palettes of blockstate strings; indexes align across palettes. */
+  palettes: string[][];
+  /** Flat runs of `[x, y, z, paletteIndex]`; air, structure void and jigsaw blocks are omitted. */
+  blocks: number[];
+  jigsaws: StructureTemplateJigsaw[];
+  entityCount: number;
+  sourcePath: string;
+}
+
+export interface StructureDataBundle {
+  structures: StructureDefinition[];
+  templatePools: TemplatePoolDefinition[];
+  processorLists: ProcessorListDefinition[];
+  structureTemplates: StructureTemplateDefinition[];
 }

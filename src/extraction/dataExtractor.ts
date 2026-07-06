@@ -32,6 +32,7 @@ import { buildPalettes } from "./palettes.js";
 import { buildBanners } from "./banners.js";
 import { buildBiomes } from "./biomes.js";
 import { enrichEnchantments } from "./enchantments.js";
+import { buildStructureData } from "./structures.js";
 
 const BLOCKSTATE_PREFIX = "assets/minecraft/blockstates/";
 const MODEL_PREFIX = "assets/minecraft/models/";
@@ -68,6 +69,7 @@ export class MinecraftDataExtractor {
     const enchantments = enrichEnchantments(await this.readEnchantments(paths, source), tags, translations);
     const biomes = await buildBiomes(paths, source, tags, translations);
     const banners = buildBanners(translations, paths);
+    const structureData = await buildStructureData(paths, source);
 
     return {
       version,
@@ -91,6 +93,10 @@ export class MinecraftDataExtractor {
       translations,
       biomes,
       banners,
+      structures: structureData.structures,
+      templatePools: structureData.templatePools,
+      processorLists: structureData.processorLists,
+      structureTemplates: structureData.structureTemplates,
       mobImages: [],
       mobSounds: [],
       mobModels: [],
