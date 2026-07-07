@@ -13,9 +13,12 @@
  *   pages/mob-voice/mob_config.json       voice recorder mob sets + presets
  *   pages/mob-voice/sounds/index.json     wiki sound library index
  *   pages/mob-voice/sounds/<mob>/*.ogg    wiki original clips (impression game)
+ *   pages/mob-sounds/<hash[0:2]>/<hash>.ogg  game sound objects (content-addressed)
  *
- * Mob Sound Editor streams its original clips straight from Mojang's CDN
- * (resources.download.minecraft.net), so they are intentionally NOT hosted here.
+ * The content-addressed `mob-sounds/` store is materialised separately by
+ * scripts/download-mob-sounds.mjs (a one-shot pull from Mojang's CDN, then
+ * committed). This script only owns the mob-images/ + mob-voice/ subtrees and
+ * leaves mob-sounds/ untouched, so the two can run in any order.
  *
  * Usage:
  *   node scripts/build-pages-assets.mjs
@@ -54,7 +57,11 @@ requireDir("wiki sounds", mobSoundsSrc);
 console.log(`[build-pages-assets] repo: ${repoRoot}`);
 console.log(`[build-pages-assets] voice repo: ${voiceRepo}`);
 
-rmSync(pagesDir, { recursive: true, force: true });
+// Only clean the subtrees this script owns; the content-addressed mob-sounds/
+// store (scripts/download-mob-sounds.mjs) is preserved.
+mkdirSync(pagesDir, { recursive: true });
+rmSync(mobImagesDest, { recursive: true, force: true });
+rmSync(mobVoiceDest, { recursive: true, force: true });
 mkdirSync(mobImagesDest, { recursive: true });
 mkdirSync(mobVoiceSoundsDest, { recursive: true });
 
@@ -86,7 +93,8 @@ writeFileSync(
 <p>Static asset origin for the pugtools.com mob tools. Cross-origin reads are allowed.</p>
 <ul><li><code>/mob-images/</code> — shared mob thumbnails</li>
 <li><code>/mob-voice/sounds/</code> — wiki original clips + index.json</li>
-<li><code>/mob-voice/mob_config.json</code> — mob sets &amp; version presets</li></ul>
+<li><code>/mob-voice/mob_config.json</code> — mob sets &amp; version presets</li>
+<li><code>/mob-sounds/</code> — content-addressed game sound objects</li></ul>
 </body></html>\n`,
 );
 
