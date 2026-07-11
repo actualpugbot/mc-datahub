@@ -10,6 +10,7 @@ import { datasetVersionDir, versionDownloadsDir } from "./core/paths.js";
 import type { VersionDataset, VersionMetadata } from "./domain/types.js";
 import { structureFileWrites } from "./datasets/datasetStore.js";
 import { buildBanners } from "./extraction/banners.js";
+import { buildJukeboxSongs } from "./extraction/jukeboxSongs.js";
 import { buildStructureData } from "./extraction/structures.js";
 import { createDefaultContext } from "./index.js";
 
@@ -422,6 +423,66 @@ async function main(): Promise<void> {
             templatePools: bundle.templatePools.length,
             processorLists: bundle.processorLists.length,
             structureTemplates: bundle.structureTemplates.length,
+          },
+          null,
+          2,
+        ),
+      );
+    });
+
+  dumpCommand
+    .command("jukebox-songs")
+    .argument("<version>", "Minecraft version id with downloaded client/server jars")
+    .option("--output <path>", "Write jukebox-songs.json to a directory instead of the dataset directory")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const downloadsDir = versionDownloadsDir(context.config.workspace, version);
+      const sources = [];
+      const clientJarPath = join(downloadsDir, "client.jar");
+      const serverJarPath = join(downloadsDir, "server.jar");
+
+      if (await fileExists(clientJarPath)) {
+        sources.push(new ZipArchiveSource(clientJarPath));
+      }
+
+      if (await fileExists(serverJarPath)) {
+        sources.push(new ZipArchiveSource(serverJarPath));
+      }
+
+      if (sources.length === 0) {
+        throw new Error(`No downloaded client.jar/server.jar was found for ${version}. Looked in ${downloadsDir}.`);
+      }
+
+      const merged = new MergedArchiveSource(sources);
+      const songs = await buildJukeboxSongs(await merged.listPaths(), merged);
+
+      // Join display names ("C418 - cat") from the processed dataset's
+      // translations and confirm each derived disc item actually exists, so
+      // consumers can trust `itemId` without re-deriving it.
+      const dataset = await context.datasetStore.loadDataset(version);
+      const translations = new Map(dataset.translations.map((entry) => [entry.key, entry.value]));
+      const knownItems = new Set(dataset.items.map((item) => item.id));
+      const payload = {
+        version,
+        generatedAt: new Date().toISOString(),
+        songs: songs.map((song) => ({
+          ...song,
+          displayName: translations.get(song.translationKey) ?? null,
+          itemResolved: knownItems.has(song.itemId),
+        })),
+      };
+
+      const directory = options.output
+        ? resolve(process.cwd(), options.output)
+        : datasetVersionDir(context.config.workspace, version);
+      await writeJsonFile(join(directory, "jukebox-songs.json"), payload);
+      console.log(
+        JSON.stringify(
+          {
+            version,
+            outputDirectory: directory,
+            songs: payload.songs.length,
+            unresolvedItems: payload.songs.filter((song) => !song.itemResolved).map((song) => song.itemId),
           },
           null,
           2,
