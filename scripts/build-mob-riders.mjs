@@ -36,9 +36,10 @@ import { fileURLToPath } from "node:url";
 const VERSION = process.argv[2] ?? "26.2";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
-const clientRoot = path.join(repoRoot, "workspace/versions", VERSION, "decompiled/client");
+const workspaceRoot = process.env.MCDATAHUB_WORKSPACE_ROOT ?? path.join(repoRoot, "workspace");
+const clientRoot = path.join(workspaceRoot, "versions", VERSION, "decompiled/client");
 const sourceRoot = path.join(clientRoot, "net/minecraft/world/entity");
-const datasetDir = path.join(repoRoot, "workspace/datasets", VERSION);
+const datasetDir = path.join(workspaceRoot, "datasets", VERSION);
 const mobImagesDir = path.join(datasetDir, "mob-images");
 const outJson = path.join(datasetDir, "mob-riders.json");
 const outImages = path.join(datasetDir, "mob-riders", "images");
@@ -213,7 +214,6 @@ function extractMethod(text, name) {
     // Body or abstract `;`?
     while (i < text.length && text[i] !== "{" && text[i] !== ";") i += 1;
     if (text[i] !== "{") continue;
-    const bodyStart = i;
     depth = 0;
     while (i < text.length) {
       if (text[i] === "{") depth += 1;
@@ -241,7 +241,11 @@ for (const file of walk(sourceRoot)) {
   const name = path.basename(file, ".java");
   const text = readFileSync(file, "utf8");
   const ext = text.match(new RegExp(`class\\s+${name}(?:<[^>{]*>)?\\s+extends\\s+([\\w.]+)`));
-  const info = { file: path.relative(sourceRoot, file).replaceAll("\\", "/"), extends: ext ? ext[1].split(".").pop() : null, methods: {} };
+  const info = {
+    file: path.relative(sourceRoot, file).replaceAll("\\", "/"),
+    extends: ext ? ext[1].split(".").pop() : null,
+    methods: {},
+  };
   for (const method of RIDING_METHODS) {
     if (!text.includes(` ${method}(`)) continue;
     const found = extractMethod(text, method);
@@ -261,13 +265,6 @@ function resolveOverride(className, method) {
     if (classes.get(cls).methods[method]) return cls;
   }
   return null;
-}
-
-function chainHas(className, ancestor) {
-  for (let cls = className; cls && classes.has(cls); cls = classes.get(cls).extends) {
-    if (cls === ancestor) return true;
-  }
-  return false;
 }
 
 /* ====================================================================== */
@@ -297,7 +294,11 @@ const CONTROLLED_BY = {
   Pig: { controller: "player", requiresSaddle: true, controlItem: "carrot_on_a_stick" },
   Strider: { controller: "player", requiresSaddle: true, controlItem: "warped_fungus_on_a_stick" },
   AbstractNautilus: { controller: "player", requiresSaddle: true },
-  HappyGhast: { controller: "player", requiresHarness: true, notes: "needs the body-slot harness; refuses while on its still timeout" },
+  HappyGhast: {
+    controller: "player",
+    requiresHarness: true,
+    notes: "needs the body-slot harness; refuses while on its still timeout",
+  },
 };
 
 // Saddle/harness equipment gating, read from the canUseSlot overrides
@@ -305,7 +306,11 @@ const CONTROLLED_BY = {
 // the happy ghast harness is the BODY slot).
 const SADDLE_RULES = {
   Pig: { slot: "saddle", condition: "alive && !baby" },
-  Strider: { slot: "saddle", condition: "alive && !baby", notes: "naturally-spawned cold striders may self-saddle; saddle is a guaranteed drop" },
+  Strider: {
+    slot: "saddle",
+    condition: "alive && !baby",
+    notes: "naturally-spawned cold striders may self-saddle; saddle is a guaranteed drop",
+  },
   AbstractHorse: { slot: "saddle", condition: "alive && !baby && tamed" },
   AbstractNautilus: { slot: "saddle", condition: "alive && !baby && tamed", notes: "surfacing strips the saddle underwater" },
   HappyGhast: { slot: "body", condition: "alive && !baby", notes: "the harness; also what makes it rideable" },
@@ -317,9 +322,11 @@ for (const [table, name] of [
   [SADDLE_RULES, "SADDLE_RULES"],
 ]) {
   for (const cls of Object.keys(table)) {
-    const expectMethod = { MAX_PASSENGERS: ["canAddPassenger", "getMaxPassengers"], CONTROLLED_BY: ["getControllingPassenger"], SADDLE_RULES: ["canUseSlot"] }[
-      name
-    ];
+    const expectMethod = {
+      MAX_PASSENGERS: ["canAddPassenger", "getMaxPassengers"],
+      CONTROLLED_BY: ["getControllingPassenger"],
+      SADDLE_RULES: ["canUseSlot"],
+    }[name];
     if (!classes.has(cls) || !expectMethod.some((m) => classes.get(cls).methods[m])) {
       warn(`curated ${name}.${cls} no longer matches an override in the source - re-check`);
     }
@@ -464,12 +471,17 @@ const mechanics = {
     seatIndex: "vehicle.getPassengers().indexOf(passenger), clamped into the declared seat list",
     passengerAttachmentFallback: "(0, hitboxHeight, 0) when an entity declares no seats",
     vehicleAttachmentFallback: "(0, 0, 0) - the rider's feet sit exactly on the seat point",
-    yawRotation: "attachment points are rotated around Y by -yaw degrees (vehicle yaw for seats, the rider's own yaw for its vehicle point)",
+    yawRotation:
+      "attachment points are rotated around Y by -yaw degrees (vehicle yaw for seats, the rider's own yaw for its vehicle point)",
     scaling:
       "dimensions (and their attachment points) are pre-scaled by ageScale * SCALE attribute; LivingEntity vehicles additionally pass getScale()*getAgeScale() into seat overrides (Camel/Boat/Strider math multiplies by it)",
     livingVsNonLiving:
       "only LivingEntity vehicles apply scale to seats (LivingEntity.getPassengerRidingPosition); boats/minecarts use raw dimensions",
-    sourceRefs: ["Entity.java positionRider/getPassengerRidingPosition", "LivingEntity.java getPassengerRidingPosition", "EntityAttachments.java getClamped"],
+    sourceRefs: [
+      "Entity.java positionRider/getPassengerRidingPosition",
+      "LivingEntity.java getPassengerRidingPosition",
+      "EntityAttachments.java getClamped",
+    ],
   },
   rules: {
     defaultMaxPassengers: 1,
@@ -477,15 +489,18 @@ const mechanics = {
     boardingCooldownTicks,
     couldAcceptPassengerDefault: true,
     noRidingCycles: "startRiding refuses if the vehicle chain already contains the would-be rider",
-    playerPassengersMoveToFront: "server-side, a boarding player is inserted at index 0 unless the first passenger is already a player",
+    playerPassengersMoveToFront:
+      "server-side, a boarding player is inserted at index 0 unless the first passenger is already a player",
     controllingPassenger: {
       entityDefault: "none",
       mobDefault: "the first passenger, if it is a Mob that canControlVehicle() and the vehicle is not NoAi",
       perVehicle: "see entities[*].controlledBy",
     },
     rideTick: "each tick the passenger's motion is zeroed and the vehicle re-places it via positionRider",
-    dismount: "getDismountLocationForPassenger picks a safe adjacent pose; overridden by boats, minecarts, striders, animals, horses, happy ghasts",
-    saddles: "26.x has no Saddleable interface - the saddle is the SADDLE equipment slot (harness = BODY slot); see entities[*].saddle",
+    dismount:
+      "getDismountLocationForPassenger picks a safe adjacent pose; overridden by boats, minecarts, striders, animals, horses, happy ghasts",
+    saddles:
+      "26.x has no Saddleable interface - the saddle is the SADDLE equipment slot (harness = BODY slot); see entities[*].saddle",
     jockeySpawns: "every mob-riding-mob spawn goes through EntitySpawnReason.JOCKEY; see riders[]",
     defaultBabyAgeScale,
   },
@@ -493,13 +508,15 @@ const mechanics = {
     renderPosition:
       "the client applies NO extra seat offset at render time - positionRider runs client-side too, so the passenger's interpolated entity position IS the seat (sole exception: position-lerped minecarts add a passengerOffset)",
     humanoidRidingPose,
-    ridingPoseModels: "HumanoidModel (state.isPassenger) and IllagerModel (state.isRiding) - same angles; most quadruped models have no riding pose",
+    ridingPoseModels:
+      "HumanoidModel (state.isPassenger) and IllagerModel (state.isRiding) - same angles; most quadruped models have no riding pose",
     walkAnimationWhilePassenger: "zeroed (LivingEntityRenderer skips walk animation for passengers)",
     riderBodyYaw: {
       onLivingVehicle: `render-side, the rider's body yaw snaps to the vehicle body yaw; the head may deviate up to ±${riderBodyYawMaxHeadDeltaDeg ?? "?"}° (past 50° the body bends 20% of the way toward the head)`,
       inBoats: `logic-side clamp of rider yaw to boat yaw ±${boatYawClampDeg ?? "?"}°; entities tagged can_turn_in_boats are exempt`,
       canTurnInBoats,
-      steeredVehicles: "horses/camels/pigs/striders set their OWN yaw from the controlling rider each tick (tickRidden), so the pair stays aligned",
+      steeredVehicles:
+        "horses/camels/pigs/striders set their OWN yaw from the controlling rider each tick (tickRidden), so the pair stays aligned",
       boatSideSaddle: "an Animal in a full boat gets its body yaw turned 90° or 270° (entity id parity) - the side-saddle look",
     },
     baby: {
@@ -507,7 +524,8 @@ const mechanics = {
         "babies are separate baked models: body parts at half size shifted down 24 model units, head kept proportionally large (BabyModelTransform)",
       babyModelTransform,
       seat: "ageScale (default 0.5) shrinks the hitbox/attachments, so baby seats and baby riders land correctly without extra work",
-      scaleAttribute: "the SCALE attribute is applied as a uniform model scale at render time; ageScale is NOT (it is baked into the geometry)",
+      scaleAttribute:
+        "the SCALE attribute is applied as a uniform model scale at render time; ageScale is NOT (it is baked into the geometry)",
     },
     vehicleSide: {
       saddleLayers:

@@ -91,14 +91,14 @@ When `entities[mount].overrides.getPassengerAttachmentPoint` is set, the
 static point is only the baseline; the class in `overrideSources` adjusts it.
 The ones that matter for a static viewer:
 
-| Mount | What the code does | Static-render advice |
-|---|---|---|
-| boats/rafts (`AbstractBoat`) | seat y = `height/3` (boat) or `height×8/9` (raft); with 2 passengers z = `+0.2` (front) / `−0.6` (back), `+0.2` more for animals | use these instead of the fallback point |
-| `Camel` | 2 seats: z = `+0.5` (driver) / `−0.7`; y is animation-driven (standing ≈ `height − 0.375`) | y ≈ 2.0, z per seat |
-| `Strider` | adds a walk-bob of `±0.12 × 2 × min(0.25, walkSpeed)` on y | ignore when standing still |
-| `AbstractHorse` | shifts seat up/back only during the rearing animation | ignore |
-| slimes/magma cubes (`AbstractCubeMob`) | seat y = `height − 0.015625 × size` | compute from size |
-| minecarts (`AbstractMinecart`) | villagers/wandering traders sit at `(0,0,0)` instead of the 0.1875 seat | special-case |
+| Mount                                  | What the code does                                                                                                               | Static-render advice                    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| boats/rafts (`AbstractBoat`)           | seat y = `height/3` (boat) or `height×8/9` (raft); with 2 passengers z = `+0.2` (front) / `−0.6` (back), `+0.2` more for animals | use these instead of the fallback point |
+| `Camel`                                | 2 seats: z = `+0.5` (driver) / `−0.7`; y is animation-driven (standing ≈ `height − 0.375`)                                       | y ≈ 2.0, z per seat                     |
+| `Strider`                              | adds a walk-bob of `±0.12 × 2 × min(0.25, walkSpeed)` on y                                                                       | ignore when standing still              |
+| `AbstractHorse`                        | shifts seat up/back only during the rearing animation                                                                            | ignore                                  |
+| slimes/magma cubes (`AbstractCubeMob`) | seat y = `height − 0.015625 × size`                                                                                              | compute from size                       |
+| minecarts (`AbstractMinecart`)         | villagers/wandering traders sit at `(0,0,0)` instead of the 0.1875 seat                                                          | special-case                            |
 
 ## 3. Posing the rider model (3D, `mob-models.json` bones)
 
@@ -158,17 +158,17 @@ From `mechanics.rules` + per-entity fields:
 
 ```js
 const { entities, mechanics } = riders;
-const chicken = entities.chicken;        // seat (0, 0.7, -0.1), builder
-const zombie  = entities.zombie;         // vehicleAttachment (0, 0.7, 0)
-const baby    = mechanics.rules.defaultBabyAgeScale;  // 0.5
+const chicken = entities.chicken; // seat (0, 0.7, -0.1), builder
+const zombie = entities.zombie; // vehicleAttachment (0, 0.7, 0)
+const baby = mechanics.rules.defaultBabyAgeScale; // 0.5
 
 // mount at origin, both facing yaw 0:
-const seat  = chicken.passengerAttachments[0];        // (0, 0.7, -0.1)
-const va    = zombie.vehicleAttachment;               // (0, 0.7, 0) * 0.5 (baby rider)
+const seat = chicken.passengerAttachments[0]; // (0, 0.7, -0.1)
+const va = zombie.vehicleAttachment; // (0, 0.7, 0) * 0.5 (baby rider)
 const riderFeet = {
-  x: seat.x - va.x * baby,                            // 0
-  y: seat.y - va.y * baby,                            // 0.7 - 0.35 = 0.35
-  z: seat.z - va.z * baby,                            // -0.1
+  x: seat.x - va.x * baby, // 0
+  y: seat.y - va.y * baby, // 0.7 - 0.35 = 0.35
+  z: seat.z - va.z * baby, // -0.1
 };
 // render the BABY zombie model at riderFeet with the humanoid riding pose.
 ```
