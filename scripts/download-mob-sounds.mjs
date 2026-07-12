@@ -23,14 +23,7 @@
  *   carry `hash` + `url`); use it to cover extra objects a downstream consumer
  *   pins that the current dataset no longer references.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -52,9 +45,7 @@ function resolveVersion(requested) {
       .sort((a, b) => b.at - a.at || b.version.localeCompare(a.version));
     if (processed[0]) return processed[0].version;
   }
-  throw new Error(
-    "No version given and none found in workspace/state.json processedVersions.",
-  );
+  throw new Error("No version given and none found in workspace/state.json processedVersions.");
 }
 
 function collectVariants(dataset) {
@@ -131,9 +122,7 @@ async function run() {
   const outDir = path.join(repoRoot, "pages", "mob-sounds");
   mkdirSync(outDir, { recursive: true });
 
-  console.log(
-    `[download-mob-sounds] ${label}: ${variants.size} unique objects -> ${outDir}`,
-  );
+  console.log(`[download-mob-sounds] ${label}: ${variants.size} unique objects -> ${outDir}`);
 
   const entries = [...variants.entries()];
   const counts = { downloaded: 0, skipped: 0 };
@@ -151,16 +140,12 @@ async function run() {
       }
       const done = counts.downloaded + counts.skipped + failures.length;
       if (done % 200 === 0 || done === entries.length) {
-        console.log(
-          `  ${done}/${entries.length} (dl ${counts.downloaded}, skip ${counts.skipped}, fail ${failures.length})`,
-        );
+        console.log(`  ${done}/${entries.length} (dl ${counts.downloaded}, skip ${counts.skipped}, fail ${failures.length})`);
       }
     }
   }
 
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, entries.length) }, worker),
-  );
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, entries.length) }, worker));
 
   if (failures.length > 0) {
     console.error(`[download-mob-sounds] ${failures.length} failed:`);

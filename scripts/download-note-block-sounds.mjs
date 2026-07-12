@@ -10,37 +10,25 @@
  *
  *   node scripts/download-note-block-sounds.mjs [version]
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const VERSION = process.argv[2] ?? '26.2';
+const VERSION = process.argv[2] ?? "26.2";
 const MAX_RETRIES = 3;
 const CONCURRENCY = 8;
-const ASSET_DOWNLOAD_BASE_URL = 'https://resources.download.minecraft.net';
+const ASSET_DOWNLOAD_BASE_URL = "https://resources.download.minecraft.net";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, '..');
-const datasetPath = path.join(
-  repoRoot,
-  'workspace/datasets',
-  VERSION,
-  'note-block-sounds.json'
-);
-const outDir = path.join(repoRoot, 'pages/note-block');
+const repoRoot = path.resolve(here, "..");
+const datasetPath = path.join(repoRoot, "workspace/datasets", VERSION, "note-block-sounds.json");
+const outDir = path.join(repoRoot, "pages/note-block");
 
-const downloadUrl = (hash) =>
-  `${ASSET_DOWNLOAD_BASE_URL}/${hash.slice(0, 2)}/${hash}`;
+const downloadUrl = (hash) => `${ASSET_DOWNLOAD_BASE_URL}/${hash.slice(0, 2)}/${hash}`;
 const objectPath = (hash) => path.join(outDir, hash.slice(0, 2), `${hash}.ogg`);
 
 function collectVariants() {
-  const data = JSON.parse(readFileSync(datasetPath, 'utf8'));
+  const data = JSON.parse(readFileSync(datasetPath, "utf8"));
   const byHash = new Map();
   for (const instrument of data) {
     for (const variant of instrument.variants ?? []) {
@@ -55,7 +43,7 @@ function collectVariants() {
 async function downloadOne(hash, { size }) {
   const dest = objectPath(hash);
   if (existsSync(dest) && (size === 0 || statSync(dest).size === size)) {
-    return 'skipped';
+    return "skipped";
   }
   let lastError;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
@@ -68,21 +56,19 @@ async function downloadOne(hash, { size }) {
       }
       mkdirSync(path.dirname(dest), { recursive: true });
       writeFileSync(dest, buffer);
-      return 'downloaded';
+      return "downloaded";
     } catch (error) {
       lastError = error;
       await new Promise((r) => setTimeout(r, 250 * attempt));
     }
   }
-  throw new Error(`${hash}: ${lastError?.message ?? 'download failed'}`);
+  throw new Error(`${hash}: ${lastError?.message ?? "download failed"}`);
 }
 
 async function main() {
   const byHash = collectVariants();
   const entries = [...byHash.entries()];
-  console.log(
-    `[download-note-block-sounds] ${entries.length} unique oggs -> ${path.relative(repoRoot, outDir)}`
-  );
+  console.log(`[download-note-block-sounds] ${entries.length} unique oggs -> ${path.relative(repoRoot, outDir)}`);
   const stats = { downloaded: 0, skipped: 0 };
   let cursor = 0;
   let bytes = 0;
@@ -94,15 +80,15 @@ async function main() {
         stats[outcome] += 1;
         bytes += meta.size;
       }
-    })
+    }),
   );
   mkdirSync(outDir, { recursive: true });
   writeFileSync(
-    path.join(outDir, 'manifest.json'),
-    `${JSON.stringify({ version: VERSION, objectCount: entries.length, totalBytes: bytes }, null, 2)}\n`
+    path.join(outDir, "manifest.json"),
+    `${JSON.stringify({ version: VERSION, objectCount: entries.length, totalBytes: bytes }, null, 2)}\n`,
   );
   console.log(
-    `[download-note-block-sounds] downloaded ${stats.downloaded}, skipped ${stats.skipped}, ${(bytes / 1024).toFixed(0)} KB total`
+    `[download-note-block-sounds] downloaded ${stats.downloaded}, skipped ${stats.skipped}, ${(bytes / 1024).toFixed(0)} KB total`,
   );
 }
 
