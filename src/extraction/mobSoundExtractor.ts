@@ -103,6 +103,15 @@ const SHARED_SOUND_EVENT_FALLBACKS = new Map<string, string[]>([
   ["entity.tropical_fish.ambient", ["entity.fish.swim"]],
 ]);
 
+// Mobs that own no `entity.<id>.*` sound events because the game reuses
+// another mob's voice wholesale. Without this, they surface with an empty
+// soundEvents list (cave spiders hiss with plain spider sounds; trader llamas
+// spit with llama sounds).
+const SHARED_MOB_SOUND_FALLBACKS = new Map<string, string>([
+  ["cave_spider", "spider"],
+  ["trader_llama", "llama"],
+]);
+
 interface AssetIndexObject {
   hash: string;
   size: number;
@@ -459,8 +468,16 @@ export class MobSoundExtractor {
     assetIndex: AssetIndexResponse,
   ): MobSoundDefinition {
     const normalizedId = normalizeLookupId(registration.localId);
-    const soundEventIds = eventsByNormalizedSoundId.get(normalizedId) ?? [];
-    const soundId = soundIdsByNormalizedId.get(normalizedId) ?? registration.localId;
+    let soundEventIds = eventsByNormalizedSoundId.get(normalizedId) ?? [];
+    let soundId = soundIdsByNormalizedId.get(normalizedId) ?? registration.localId;
+    if (soundEventIds.length === 0) {
+      const fallbackId = SHARED_MOB_SOUND_FALLBACKS.get(registration.localId);
+      if (fallbackId) {
+        const normalizedFallback = normalizeLookupId(fallbackId);
+        soundEventIds = eventsByNormalizedSoundId.get(normalizedFallback) ?? [];
+        soundId = soundIdsByNormalizedId.get(normalizedFallback) ?? fallbackId;
+      }
+    }
     const translationKey = `entity.minecraft.${registration.localId}`;
     const displayName = languageMap[translationKey] ?? humanizeIdentifier(registration.localId);
     const soundEvents = soundEventIds.map((eventId) => this.buildSoundEvent(eventId, soundManifest, languageMap, assetIndex));
