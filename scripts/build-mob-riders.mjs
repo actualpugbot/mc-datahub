@@ -32,6 +32,8 @@ const outJson = path.join(datasetDir, "mob-riders.json");
 const outImages = path.join(datasetDir, "mob-riders", "images");
 
 /** Display names + facts the spawn code cannot cheaply express. */
+// Baby mobs render at half scale (Mob.getScale for babies).
+const BABY_SCALE = 0.5;
 const CURATED = {
   zombie_on_chicken: {
     name: "Chicken jockey",
@@ -73,15 +75,35 @@ if (existsSync(idsFile)) {
 const registrySource = readFileSync(path.join(sourceRoot, "EntityTypes.java"), "utf8");
 const constToId = new Map();
 const classToId = new Map();
-const registryPattern = /EntityType<([\w.]+)>\s+([A-Z_0-9]+)\s*=\s*register\(\s*EntityTypeIds\.([A-Z_0-9]+)/g;
+const dimensionsById = new Map();
+const registryPattern = /EntityType<([\w.]+)>\s+([A-Z_0-9]+)\s*=\s*register\(\s*EntityTypeIds\.([A-Z_0-9]+)([\s\S]*?)\n {3}\);/g;
 for (const match of registrySource.matchAll(registryPattern)) {
-  const [, className, constant, idConstant] = match;
+  const [, className, constant, idConstant, builder] = match;
   const id = idsByConst.get(idConstant) ?? idConstant.toLowerCase();
   constToId.set(constant, id);
   const simple = className.split(".").pop();
   if (!classToId.has(simple)) classToId.set(simple, id);
+
+  // Hitbox size + where a passenger sits, straight from the builder chain.
+  // passengerAttachments takes either a bare height or Vec3(x, y, z) points.
+  const sized = builder.match(/\.sized\(([\d.]+)F?,\s*([\d.]+)F?\)/);
+  const attachment = builder.match(
+    /\.passengerAttachments\(\s*(?:new Vec3\(([-\d.]+),\s*([-\d.]+)F?,\s*([-\d.]+)\)|([-\d.]+)F?)\s*\)/,
+  );
+  const dims = {};
+  if (sized) {
+    dims.width = Number(sized[1]);
+    dims.height = Number(sized[2]);
+  }
+  if (attachment) {
+    dims.passengerAttachment =
+      attachment[4] !== undefined
+        ? { x: 0, y: Number(attachment[4]), z: 0 }
+        : { x: Number(attachment[1]), y: Number(attachment[2]), z: Number(attachment[3]) };
+  }
+  if (Object.keys(dims).length > 0) dimensionsById.set(id, dims);
 }
-console.log(`[mob-riders] registry: ${constToId.size} entity types`);
+console.log(`[mob-riders] registry: ${constToId.size} entity types, ${dimensionsById.size} with dimensions`);
 
 /* ---- scan for JOCKEY spawn sites ---------------------------------------- */
 const riders = new Map();
@@ -138,12 +160,18 @@ for (const file of walk(sourceRoot)) {
 
     const id = `${riderId}_on_${mountId}`;
     const curated = CURATED[id] ?? {};
+    const riderIsBaby = curated.riderIsBaby ?? false;
     riders.set(id, {
       id,
       name: curated.name ?? `${riderId} on ${mountId}`,
       riderId,
       mountId,
-      riderIsBaby: curated.riderIsBaby ?? false,
+      riderIsBaby,
+      // Real hitbox sizes + saddle point so consumers can composite the pair
+      // with game-accurate proportions instead of guessing.
+      riderDimensions: dimensionsById.get(riderId) ?? null,
+      mountDimensions: dimensionsById.get(mountId) ?? null,
+      riderScale: riderIsBaby ? BABY_SCALE : 1,
       chance,
       guard,
       sourceFile: `${selfClass}.java:${i + 1}`,
