@@ -18,31 +18,19 @@
  * Standalone — no decompiled client / full pipeline needed. Network only.
  *   node scripts/build-note-block-sounds.mjs [version]
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const VERSION = process.argv[2] ?? '26.2';
+const VERSION = process.argv[2] ?? "26.2";
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, '..');
-const metadataPath = path.join(
-  repoRoot,
-  'workspace/versions',
-  VERSION,
-  'metadata.json'
-);
-const outPath = path.join(
-  repoRoot,
-  'workspace/datasets',
-  VERSION,
-  'note-block-sounds.json'
-);
+const repoRoot = path.resolve(here, "..");
+const metadataPath = path.join(repoRoot, "workspace/versions", VERSION, "metadata.json");
+const outPath = path.join(repoRoot, "workspace/datasets", VERSION, "note-block-sounds.json");
 
-const ASSET_DOWNLOAD_BASE_URL = 'https://resources.download.minecraft.net';
-const toAssetDownloadUrl = (hash) =>
-  `${ASSET_DOWNLOAD_BASE_URL}/${hash.slice(0, 2)}/${hash}`;
-const stripNamespace = (value) =>
-  value.startsWith('minecraft:') ? value.slice('minecraft:'.length) : value;
+const ASSET_DOWNLOAD_BASE_URL = "https://resources.download.minecraft.net";
+const toAssetDownloadUrl = (hash) => `${ASSET_DOWNLOAD_BASE_URL}/${hash.slice(0, 2)}/${hash}`;
+const stripNamespace = (value) => (value.startsWith("minecraft:") ? value.slice("minecraft:".length) : value);
 const round = (n) => Math.round(n * 1000) / 1000;
 
 async function getJson(url) {
@@ -53,7 +41,7 @@ async function getJson(url) {
 
 /** Resolve one raw sound name -> variant {soundPath, assetPath, hash, size, ...}. */
 function toVariant(objects, rawSoundPath, entry, refPitch, refVolume) {
-  const soundPath = stripNamespace(rawSoundPath).replace(/\.ogg$/i, '');
+  const soundPath = stripNamespace(rawSoundPath).replace(/\.ogg$/i, "");
   const assetPath = `minecraft/sounds/${soundPath}.ogg`;
   const asset = objects[assetPath];
   if (!asset) {
@@ -84,14 +72,14 @@ function resolveVariants(objects, sounds, eventId, refPitch, refVolume, visited)
   if (!event?.sounds?.length) return [];
   const variants = [];
   for (const entry of event.sounds) {
-    if (typeof entry === 'string') {
+    if (typeof entry === "string") {
       const variant = toVariant(objects, entry, {}, refPitch, refVolume);
       if (variant) variants.push(variant);
       continue;
     }
-    if (!entry || typeof entry !== 'object') continue;
-    if (entry.type === 'event') {
-      if (typeof entry.name !== 'string') continue;
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.type === "event") {
+      if (typeof entry.name !== "string") continue;
       // Preserve the referencing event's pitch/volume into the recursion.
       variants.push(
         ...resolveVariants(
@@ -100,12 +88,12 @@ function resolveVariants(objects, sounds, eventId, refPitch, refVolume, visited)
           entry.name,
           refPitch * (entry.pitch ?? 1),
           refVolume * (entry.volume ?? 1),
-          new Set(visited)
-        )
+          new Set(visited),
+        ),
       );
       continue;
     }
-    if (typeof entry.name !== 'string') continue;
+    if (typeof entry.name !== "string") continue;
     const variant = toVariant(objects, entry.name, entry, refPitch, refVolume);
     if (variant) variants.push(variant);
   }
@@ -113,26 +101,26 @@ function resolveVariants(objects, sounds, eventId, refPitch, refVolume, visited)
 }
 
 async function main() {
-  const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+  const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
   const assetIndexUrl = metadata.assetIndex?.url;
   if (!assetIndexUrl) throw new Error(`no assetIndex.url in ${metadataPath}`);
   console.log(`[note-block-sounds] ${VERSION} asset index: ${assetIndexUrl}`);
   const assetIndex = await getJson(assetIndexUrl);
   const objects = assetIndex.objects ?? {};
 
-  const soundsAsset = objects['minecraft/sounds.json'];
-  if (!soundsAsset) throw new Error('minecraft/sounds.json missing from asset index');
+  const soundsAsset = objects["minecraft/sounds.json"];
+  if (!soundsAsset) throw new Error("minecraft/sounds.json missing from asset index");
   const sounds = await getJson(toAssetDownloadUrl(soundsAsset.hash));
 
   const eventIds = Object.keys(sounds)
-    .filter((key) => key.startsWith('block.note_block.'))
+    .filter((key) => key.startsWith("block.note_block."))
     .sort();
   console.log(`[note-block-sounds] found ${eventIds.length} block.note_block.* events`);
 
   const result = [];
   for (const eventId of eventIds) {
-    const suffix = eventId.slice('block.note_block.'.length); // harp | imitate.creeper | trumpet_exposed
-    const kind = suffix.startsWith('imitate.') ? 'mobhead' : 'pitched';
+    const suffix = eventId.slice("block.note_block.".length); // harp | imitate.creeper | trumpet_exposed
+    const kind = suffix.startsWith("imitate.") ? "mobhead" : "pitched";
     const variants = resolveVariants(objects, sounds, eventId, 1, 1, new Set());
     if (variants.length === 0) {
       console.warn(`  no resolvable variants: ${eventId}`);
@@ -148,9 +136,7 @@ async function main() {
   result.sort((a, b) => a.instrument.localeCompare(b.instrument));
   mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
-  console.log(
-    `[note-block-sounds] wrote ${result.length} instruments -> ${path.relative(repoRoot, outPath)}`
-  );
+  console.log(`[note-block-sounds] wrote ${result.length} instruments -> ${path.relative(repoRoot, outPath)}`);
 }
 
 main().catch((error) => {

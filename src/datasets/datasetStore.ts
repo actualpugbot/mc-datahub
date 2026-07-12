@@ -213,7 +213,8 @@ export class DatasetStore {
     const structures =
       dataset.structures ?? (await this.loadCollectionSidecar<StructureDefinition>(directory, "structures.json", "structures"));
     const templatePools =
-      dataset.templatePools ?? (await this.loadCollectionSidecar<TemplatePoolDefinition>(directory, "template-pools.json", "pools"));
+      dataset.templatePools ??
+      (await this.loadCollectionSidecar<TemplatePoolDefinition>(directory, "template-pools.json", "pools"));
     const processorLists =
       dataset.processorLists ??
       (await this.loadCollectionSidecar<ProcessorListDefinition>(directory, "processor-lists.json", "processorLists"));
