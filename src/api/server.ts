@@ -264,6 +264,9 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
     case "sulfur-cube":
       // Single source-derived object, exposed as a one-entry collection for route consistency.
       return { responseKey: "sulfurCube", entries: dataset.sulfurCube ? [dataset.sulfurCube] : [] };
+    case "tree-features":
+      // Single source-derived object, exposed as a one-entry collection for route consistency.
+      return { responseKey: "treeFeatures", entries: dataset.treeFeatures ? [dataset.treeFeatures] : [] };
     case "loot-tables":
       return {
         responseKey: "lootTables",
@@ -326,6 +329,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       enchantments: dataset.enchantments.length,
       anvilMechanics: dataset.anvilMechanics ? 1 : 0,
       sulfurCube: dataset.sulfurCube ? 1 : 0,
+      treeFeatures: dataset.treeFeatures ? 1 : 0,
       tags: dataset.tags.length,
       lootTables: dataset.lootTables.length,
       advancements: dataset.advancements.length,

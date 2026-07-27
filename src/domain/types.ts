@@ -1045,6 +1045,136 @@ export interface SulfurCubeDataset {
   warnings: string[];
 }
 
+/** Sapling growth-mechanics constants parsed from SaplingBlock.java (shared by every vanilla sapling). */
+export interface TreeFeaturesGrowthMechanics {
+  /** Minimum local raw brightness above the sapling for a random-tick growth attempt (getMaxLocalRawBrightness >= N). */
+  lightLevelMin?: number;
+  /** A random tick advances the sapling 1 in N times (random.nextInt(N) == 0). */
+  randomTickGrowthOneIn?: number;
+  /** STAGE steps a sapling passes through before the tree places (stage 0 → stage 1 → grow). */
+  growthStages?: number;
+  /** Chance a bonemeal use advances the sapling one stage (nextFloat() < N). */
+  bonemealSuccessChance?: number;
+  sourcePath: string;
+}
+
+/** One sapling's TreeGrower: which configured features it can place, with feature keys like "minecraft:fancy_oak". */
+export interface TreeGrowerDefinition {
+  /** Registry name of the grower, e.g. "oak". */
+  name: string;
+  /** Chance the secondary tree/mega-tree/flowers variant is picked instead of the primary one. */
+  secondaryChance: number;
+  tree?: string;
+  secondaryTree?: string;
+  /** 2x2 sapling variant, attempted before the single-sapling tree. */
+  megaTree?: string;
+  secondaryMegaTree?: string;
+  /** Variant placed when a flower is within ±2 blocks horizontally / +1 vertically (bee nest trees). */
+  flowers?: string;
+  secondaryFlowers?: string;
+  /** True when the grower has a mega (2x2) variant at all. */
+  canBeTwoByTwo: boolean;
+  /** True when the grower has ONLY mega variants (dark oak, pale oak): a lone sapling never grows. */
+  requiresTwoByTwo: boolean;
+}
+
+/** Trunk placer numbers from a configured tree feature. Trunk height = baseHeight + rand(randA + 1) + rand(randB + 1). */
+export interface TreeFeatureTrunkPlacer {
+  type: string;
+  baseHeight: number;
+  heightRandA: number;
+  heightRandB: number;
+  /** Computed: baseHeight. */
+  minHeight: number;
+  /** Computed: baseHeight + heightRandA + heightRandB. */
+  maxHeight: number;
+}
+
+/** Foliage placer type plus its scalar numbers (radius, offset, height, chances; ranges flatten to <key>_min/<key>_max). */
+export interface TreeFeatureFoliagePlacer {
+  type: string;
+  params: Record<string, number>;
+}
+
+/** One notable tree decorator (beehive, alter_ground/podzol, cocoa, vines, attached propagules). */
+export interface TreeFeatureDecorator {
+  type: string;
+  probability?: number;
+  /** Block a state-bearing decorator places (e.g. podzol for alter_ground, mangrove_propagule for attached_to_leaves). */
+  block?: string;
+}
+
+/** Shape summary of one configured feature a TreeGrower (or fungus block) can place. */
+export interface TreeFeatureShape {
+  /** Namespaced feature key, e.g. "minecraft:oak". */
+  key: string;
+  /** Feature type, e.g. "minecraft:tree" or "minecraft:huge_fungus". */
+  featureType: string;
+  /** Absent for non-tree features (huge fungi have no trunk placer). */
+  trunkPlacer?: TreeFeatureTrunkPlacer;
+  foliagePlacer?: TreeFeatureFoliagePlacer;
+  decorators: TreeFeatureDecorator[];
+  /** Trunk/log block id; the stem block for huge fungi. */
+  trunkBlock?: string;
+  /** Leaves block id; the wart/hat block for huge fungi. */
+  foliageBlock?: string;
+  /** Huge-fungus decoration block (shroomlight). */
+  decorBlock?: string;
+  /** Huge-fungus required base block (nylium). */
+  baseBlock?: string;
+  rootPlacerType?: string;
+  ignoreVines?: boolean;
+  sourcePath: string;
+}
+
+/** Per-block stats for one block in a wood family's set. Absent flammability/fuel/compost fields mean "not applicable". */
+export interface TreeFamilyBlockStats {
+  id: string;
+  name: string;
+  /** Position in the family set: "log", "stripped_log", "planks", "sign", "leaves", "sapling", "fungus", ... */
+  role: string;
+  /** True when FireBlock.bootStrap() registers ignite/burn odds for this block. */
+  flammable: boolean;
+  igniteOdds?: number;
+  burnOdds?: number;
+  /** Furnace burn time in ticks for the corresponding item, from FuelValues (absent = not a fuel). */
+  fuelTicks?: number;
+  /** Composter fill chance for the corresponding item, from ComposterBlock.COMPOSTABLES. */
+  compostChance?: number;
+}
+
+/** How a nether "tree" grows: the fungus block and its wild/bonemeal-planted huge-fungus features. */
+export interface TreeFamilyFungus {
+  block: string;
+  wildFeature: string;
+  /** Feature placed when the fungus block is bonemealed (from the NetherFungusBlock registration). */
+  plantedFeature: string;
+}
+
+/** One wood family: sapling/grower rules plus per-block wood stats. */
+export interface TreeFamilyDefinition {
+  /** Family key, e.g. "oak", "crimson", "bamboo". */
+  family: string;
+  displayName: string;
+  category: "overworld" | "nether" | "bamboo";
+  /** The sapling/propagule/fungus block that grows this family's tree (absent for bamboo). */
+  sapling?: string;
+  /** Present for sapling-grown families; absent for bamboo and the nether fungi. */
+  grower?: TreeGrowerDefinition;
+  /** Present for crimson/warped. */
+  fungus?: TreeFamilyFungus;
+  blocks: TreeFamilyBlockStats[];
+}
+
+/** Source-derived tree/wood data: growers, growth mechanics, feature shapes, and per-block wood stats. */
+export interface TreeFeaturesDataset {
+  growth: TreeFeaturesGrowthMechanics;
+  families: TreeFamilyDefinition[];
+  features: TreeFeatureShape[];
+  sourcePaths: string[];
+  warnings: string[];
+}
+
 export interface TagDefinition {
   id: string;
   registry: string;
@@ -1222,6 +1352,8 @@ export interface VersionDataset {
   anvilMechanics?: AnvilMechanicsDefinition;
   /** Source-derived Sulfur Cube archetypes and the blocks that select them. Optional so older datasets still load. */
   sulfurCube?: SulfurCubeDataset;
+  /** Source-derived tree growers, growth mechanics, feature shapes, and per-block wood stats. Optional so older datasets still load. */
+  treeFeatures?: TreeFeaturesDataset;
   /** Worldgen structure definitions (jigsaw config included). Optional so older datasets still load. */
   structures?: StructureDefinition[];
   /** Jigsaw template pools. Optional so older datasets still load. */

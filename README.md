@@ -38,6 +38,7 @@ workspace/
     enchantments.json
     anvil-mechanics.json
     sulfur-cube.json
+    tree-features.json
     tags.json
     loot-tables.json
     advancements.json
@@ -75,6 +76,7 @@ If another project or Codex agent wants Minecraft data without re-implementing e
 - `enchantments.json`: data-driven enchantment definitions (description key, supported items, max level, weight, anvil cost, slots) enriched with resolved fields: `displayName` (en_us), `supportedItemIds`/`primaryItemIds` (tag refs expanded to concrete item ids), `exclusiveSetIds` (incompatible enchantment ids), `minCost`/`maxCost` (enchanting-table formulas), and `tags` (enchantment-registry memberships such as `minecraft:curse`, `minecraft:treasure`, `minecraft:in_enchanting_table`)
 - `anvil-mechanics.json`: source-derived anvil combine/repair mechanics from `AnvilMenu.java` and `Player.java` — rename/repair/incompatibility costs, the 40-level "Too Expensive" threshold and 39 rename clamp, the prior-work formula (`2c + 1`), material/sacrifice repair fractions, the book fee halving rule, anvil break chance, and the player XP-per-level brackets; unparseable fields become `warnings` entries instead of guesses
 - `sulfur-cube.json`: source-derived Sulfur Cube behavior keyed on the block it has swallowed. Resolves the data-driven `sulfur_cube_archetype` registry plus its `#minecraft:sulfur_cube_archetype/*` item tags into 12 archetypes, each with human-oriented behavior numbers (`mobility`, `bounciness`, `friction`, `airDrag`), the raw entity-attribute modifiers, buoyancy, optional explosion/contact-damage, knockback, per-archetype sounds, and the fully-expanded list of swallowable blocks (with display names) that select it. Also includes a `blockIndex` reverse lookup (block id → archetype), the entity meta (sizes, health, split, tempt range, bucket/shear/food, spawn biome), the damage types a block-wearing cube is immune to, the hot-contact damage type, and relevant attribute base ranges; parse gaps become `warnings` instead of guesses
+- `tree-features.json`: source-derived wood families (oak, spruce, birch, jungle, acacia, dark oak, mangrove, cherry, pale oak, bamboo, crimson, warped). Each family carries its sapling block, the `TreeGrower` rules parsed from `TreeGrower.java` (`secondaryChance`, `tree`/`secondaryTree`/`megaTree`/`secondaryMegaTree`/`flowers` resolved to configured-feature keys, plus `canBeTwoByTwo`/`requiresTwoByTwo` so dark oak and pale oak are marked 2x2-only), and its full block set (logs/stems, stripped, wood/hyphae, planks, stairs, slab, fence, fence gate, door, trapdoor, button, pressure plate, sign, hanging sign, shelf, leaves, sapling/propagule/fungus, bamboo blocks and mosaic) with flammability (`igniteOdds`/`burnOdds` from `FireBlock.bootStrap()`), furnace `fuelTicks` (the `FuelValues` builder chain replayed with Java integer math and item tags expanded), and composter `compostChance`. Also includes the shared sapling `growth` constants parsed from `SaplingBlock.java` (light threshold, random-tick odds, growth stages, bonemeal chance) and a `features` array summarizing every referenced configured feature (trunk placer type and `base_height`/`height_rand_a`/`height_rand_b` with computed min/max, foliage placer numbers, decorators such as beehive/alter_ground/cocoa/vines, and trunk/foliage block ids), including the crimson and warped huge fungi; parse gaps become `warnings` instead of guesses
 - `tags.json`: registry tags (block, item, fluid, entity_type, …) with their resolved values
 - `loot-tables.json`: loot tables with derived item drops and the loot functions they use
 - `advancements.json`: advancement tree with parent, display keys, icon, criteria, and rewards
@@ -106,7 +108,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 - `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
 - `GET /versions/:version/dataset` — the full combined dataset in one response
 - `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
-- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds,mob-profiles}`
+- `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tree-features,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds,mob-profiles}`
 - `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-animations,mob-sounds}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`
 
@@ -156,6 +158,12 @@ When a decompiled client source tree is available under `workspace/versions/<ver
 
 - `item-stats.json` with source-derived stack sizes, durability, food values, rarity, fire resistance, and tool or armor stats
 - `block-properties.json` with source-derived destroy time, explosion resistance, light emission, push reaction, and related flags
+
+To regenerate these source-derived datasets after changing `src/extraction/sourceDerivedExtractor.ts` (the decompiled tree is already on disk, so skip decompilation and ignore the cached fingerprint):
+
+```bash
+npm run cli:dev -- process version <version> --skip-decompile --force
+```
 
 During development:
 

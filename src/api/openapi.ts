@@ -23,6 +23,12 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     key: "sulfurCube",
     summary: "Source-derived Sulfur Cube archetypes and the blocks that select them (behavior per swallowed block).",
   },
+  {
+    slug: "tree-features",
+    key: "treeFeatures",
+    summary:
+      "Source-derived wood families: sapling growers and growth mechanics, configured tree/fungus shapes, and per-block flammability, furnace fuel, and compost stats.",
+  },
   { slug: "tags", key: "tags", summary: "Registry tags (block, item, fluid, entity_type, …) and their values." },
   { slug: "loot-tables", key: "lootTables", summary: "Loot tables with derived item drops and functions." },
   { slug: "advancements", key: "advancements", summary: "Advancement tree with criteria, display keys, and rewards." },

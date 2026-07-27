@@ -117,6 +117,15 @@ export class DatasetStore {
             }),
           ]
         : []),
+      ...(dataset.treeFeatures
+        ? [
+            writeJsonFile(join(directory, "tree-features.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.treeFeatures,
+            }),
+          ]
+        : []),
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
       writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
       writeJsonFile(join(directory, "advancements.json"), dataset.advancements),
