@@ -245,6 +245,76 @@ public class Blocks {
     });
   });
 
+  test("substitutes property-helper parameters so soundType/mapColor never leak partial tokens", async () => {
+    const root = await createTempClientRoot();
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/Blocks.java",
+      `package net.minecraft.world.level.block;
+
+public class Blocks {
+   public static final Block OAK_LOG = register("oak_log", RotatedPillarBlock::new, logProperties(MapColor.WOOD, MapColor.PODZOL, SoundType.WOOD));
+   public static final Block OAK_LEAVES = register("oak_leaves", leavesProperties(SoundType.GRASS));
+   public static final Block CRIMSON_STEM = register("crimson_stem", netherStemProperties(MapColor.CRIMSON_STEM));
+
+   private static BlockBehaviour.Properties logProperties(final MapColor topColor, final MapColor sideColor, final SoundType soundType) {
+      return BlockBehaviour.Properties.of()
+         .mapColor(state -> state.getValue(RotatedPillarBlock.AXIS) == Direction.Axis.Y ? topColor : sideColor)
+         .instrument(NoteBlockInstrument.BASS)
+         .strength(2.0F)
+         .sound(soundType)
+         .ignitedByLava();
+   }
+
+   private static BlockBehaviour.Properties leavesProperties(final SoundType soundType) {
+      return BlockBehaviour.Properties.of().mapColor(MapColor.PLANT).strength(0.2F).randomTicks().sound(soundType).noOcclusion();
+   }
+
+   private static BlockBehaviour.Properties netherStemProperties(final MapColor mapColor) {
+      return BlockBehaviour.Properties.of().mapColor(state -> mapColor).instrument(NoteBlockInstrument.BASS).strength(2.0F).sound(SoundType.STEM);
+   }
+
+   private static Block register(final String id, final BlockBehaviour.Properties properties) {
+      return null;
+   }
+
+   private static Block register(final String id, final java.util.function.Function<BlockBehaviour.Properties, Block> factory, final BlockBehaviour.Properties properties) {
+      return null;
+   }
+}`,
+    );
+
+    const result = await new DecompiledSourceExtractor(createConsoleLogger(false)).extract(root);
+
+    // logProperties: the mapColor lambda resolves to its axis-Y (default state) branch, and
+    // `.sound(soundType)` resolves through the substituted SoundType.WOOD argument.
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:oak_log")).toMatchObject({
+      id: "minecraft:oak_log",
+      mapColor: "wood",
+      soundType: "wood",
+      destroyTime: 2,
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:oak_leaves")).toMatchObject({
+      id: "minecraft:oak_leaves",
+      mapColor: "plant",
+      soundType: "grass",
+      randomTicks: true,
+    });
+    // netherStemProperties has a parameter literally named `mapColor`; substitution must not
+    // clobber the `.mapColor(...)` builder method itself.
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:crimson_stem")).toMatchObject({
+      id: "minecraft:crimson_stem",
+      mapColor: "crimson_stem",
+      soundType: "stem",
+    });
+
+    // The pre-fix corruption sliced camelCase parameter names into partial tokens.
+    for (const entry of result.blockProperties) {
+      expect(entry.soundType).not.toBe("ype");
+      expect(entry.mapColor).not.toBe("olor");
+    }
+  });
+
   test("resolves 26.2 reference ids and corrects symbol/id mismatches", async () => {
     const root = await createTempClientRoot();
     await writeReferenceClasses(root);

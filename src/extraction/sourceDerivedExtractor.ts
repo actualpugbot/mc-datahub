@@ -217,7 +217,7 @@ export class DecompiledSourceExtractor {
     const blocksSource = await readFile(blocksPath, "utf8");
     const methods = parseMethods(blocksSource);
     const registrationHelpers = new Map<string, RegistrationHelper>();
-    const propertyHelpers = new Map<string, string>();
+    const propertyHelpers = new Map<string, RegistrationHelper>();
 
     for (const method of methods) {
       const registrationProperties = extractRegisterProperties(method.body);
@@ -227,7 +227,7 @@ export class DecompiledSourceExtractor {
 
       const propertyReturn = extractPropertiesReturn(method.body);
       if (propertyReturn) {
-        propertyHelpers.set(method.name, propertyReturn);
+        propertyHelpers.set(method.name, { expression: propertyReturn, params: method.params });
       }
     }
 
@@ -334,7 +334,7 @@ function toBlockPropertyDefinition(
   declaration: StaticDeclaration,
   sourcePath: string,
   registrationHelpers: Map<string, RegistrationHelper>,
-  propertyHelpers: Map<string, string>,
+  propertyHelpers: Map<string, RegistrationHelper>,
   context: SourceContext,
 ): BlockPropertyDefinition {
   const outerCall = parseTopLevelCall(declaration.expression);
@@ -613,7 +613,7 @@ function copperIdExpand(byState: string[]): string[] {
 
 function expandBlockCollections(
   blocksSource: string,
-  propertyHelpers: Map<string, string>,
+  propertyHelpers: Map<string, RegistrationHelper>,
   context: SourceContext,
 ): BlockPropertyDefinition[] {
   const declarations = [
@@ -1130,14 +1130,21 @@ function substituteHelperParameters(expression: string, params: string[], args: 
   params.forEach((param, index) => {
     const argument = args[index];
     if (param && argument) {
-      result = result.replace(new RegExp(`\\b${escapeRegExp(param)}\\b`, "g"), argument);
+      // A parameter named `mapColor` must not clobber the `.mapColor(...)` builder method in
+      // the same body: skip identifiers that are member accesses (preceded by `.`) or
+      // invocations (followed by `(`).
+      result = result.replace(new RegExp(`(?<!\\.)\\b${escapeRegExp(param)}\\b(?!\\s*\\()`, "g"), () => argument);
     }
   });
 
   return result;
 }
 
-function expandBlockPropertiesExpression(expression: string, propertyHelpers: Map<string, string>, depth = 0): string {
+function expandBlockPropertiesExpression(
+  expression: string,
+  propertyHelpers: Map<string, RegistrationHelper>,
+  depth = 0,
+): string {
   if (depth >= 4) {
     return expression;
   }
@@ -1147,8 +1154,8 @@ function expandBlockPropertiesExpression(expression: string, propertyHelpers: Ma
     return expression;
   }
 
-  const helperExpression = propertyHelpers.get(call.name);
-  if (!helperExpression) {
+  const helper = propertyHelpers.get(call.name);
+  if (!helper) {
     return expression;
   }
 
@@ -1162,6 +1169,10 @@ function expandBlockPropertiesExpression(expression: string, propertyHelpers: Ma
     return expression;
   }
 
+  // Substitute the helper's parameters with the call's arguments so e.g.
+  // `logProperties(MapColor.WOOD, MapColor.PODZOL, SoundType.WOOD)` resolves its body's
+  // `.sound(soundType)` to `.sound(SoundType.WOOD)` rather than leaking the parameter name.
+  const helperExpression = substituteHelperParameters(helper.expression, helper.params, call.args);
   const suffix = expression.slice(closeIndex + 1);
   return expandBlockPropertiesExpression(collapseWhitespace(`${helperExpression}${suffix}`), propertyHelpers, depth + 1);
 }
@@ -1845,7 +1856,18 @@ function normalizeReferenceValue(value: string | undefined): string | undefined 
     return trimmed.slice(1, -1);
   }
 
-  const identifierMatch = trimmed.match(/([A-Z][A-Z0-9_]*|[a-z][a-z0-9_]*)$/);
+  // Pillar helpers pick a map color per axis (`... == Direction.Axis.Y ? topColor : sideColor`);
+  // the default block state is axis=Y, so resolve the ternary to its axis-Y branch.
+  const axisTernary = trimmed.match(/==\s*Direction\.Axis\.Y\s*\?([^:?]+):/);
+  if (axisTernary) {
+    return normalizeReferenceValue(axisTernary[1]);
+  }
+
+  // The identifier must be a whole trailing token: without the left boundary, an unresolved
+  // camelCase leftover like `soundType` would match only its trailing lowercase run ("ype")
+  // and leak a corrupted value. Whole camelCase tokens stay unmatched on purpose — an
+  // unresolved reference should come back undefined, not as a fake constant.
+  const identifierMatch = trimmed.match(/(?:^|[^A-Za-z0-9_])([A-Z][A-Z0-9_]*|[a-z][a-z0-9_]*)$/);
   if (!identifierMatch) {
     return undefined;
   }
