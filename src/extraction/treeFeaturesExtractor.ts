@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileExists, readJsonFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
@@ -21,7 +21,13 @@ const BLOCKS_SOURCE = "net/minecraft/world/level/block/Blocks.java";
 const FIRE_SOURCE = "net/minecraft/world/level/block/FireBlock.java";
 const FUEL_SOURCE = "net/minecraft/world/level/block/entity/FuelValues.java";
 const COMPOSTER_SOURCE = "net/minecraft/world/level/block/ComposterBlock.java";
-const CONFIGURED_FEATURE_DIR = "data/minecraft/worldgen/configured_feature";
+// 26.3 snapshots moved fuel and compost onto per-item Item.Properties calls that reference
+// data-driven number providers, replacing FuelValues.java and the COMPOSTABLES bootstrap.
+const ITEMS_SOURCE = "net/minecraft/world/item/Items.java";
+const NUMBER_PROVIDERS_SOURCE = "net/minecraft/world/level/storage/loot/providers/number/NumberProviders.java";
+const NUMBER_PROVIDER_DIR = "data/minecraft/number_provider";
+/** 26.3 snapshots renamed worldgen/configured_feature to worldgen/feature; the extractor probes both. */
+const CONFIGURED_FEATURE_DIRS = ["data/minecraft/worldgen/feature", "data/minecraft/worldgen/configured_feature"];
 const ITEM_TAG_DIR = "data/minecraft/tags/item";
 const BLOCKSTATE_DIR = "assets/minecraft/blockstates";
 const LANG_PATH = "assets/minecraft/lang/en_us.json";
@@ -41,6 +47,7 @@ const FAMILIES: Array<{ key: string; category: FamilyCategory }> = [
   { key: "mangrove", category: "overworld" },
   { key: "cherry", category: "overworld" },
   { key: "pale_oak", category: "overworld" },
+  { key: "poplar", category: "overworld" },
   { key: "bamboo", category: "bamboo" },
   { key: "crimson", category: "nether" },
   { key: "warped", category: "nether" },
@@ -67,6 +74,8 @@ interface ParsedGrower {
   secondaryChance: number;
   /** Bare feature keys in slot order: mega, secondaryMega, tree, secondaryTree, flowers, secondaryFlowers. */
   slots: Array<string | undefined>;
+  /** All weighted tree features when the trees list holds more than two (26.3-snapshot poplar). */
+  treeVariants?: Array<{ featureKey: string; weight: number }>;
 }
 
 interface RawConfiguredFeature {
@@ -84,6 +93,7 @@ interface RawConfiguredFeature {
 export class TreeFeaturesExtractor {
   private displayNames = new Map<string, string>();
   private tagCache = new Map<string, string[]>();
+  private featureDir = CONFIGURED_FEATURE_DIRS[CONFIGURED_FEATURE_DIRS.length - 1]!;
 
   constructor(private readonly logger: Logger) {}
 
@@ -92,6 +102,13 @@ export class TreeFeaturesExtractor {
     if (!(await fileExists(growerPath))) {
       this.logger.warn(`Skipping tree features; ${TREE_GROWER_SOURCE} was not found under ${decompiledClientRoot}.`);
       return undefined;
+    }
+
+    for (const candidate of CONFIGURED_FEATURE_DIRS) {
+      if (await fileExists(join(decompiledClientRoot, candidate))) {
+        this.featureDir = candidate;
+        break;
+      }
     }
 
     this.displayNames = await this.loadLang(decompiledClientRoot);
@@ -103,7 +120,7 @@ export class TreeFeaturesExtractor {
       TREE_FEATURES_SOURCE,
       SAPLING_SOURCE,
       BLOCKS_SOURCE,
-      CONFIGURED_FEATURE_DIR,
+      this.featureDir,
     ];
 
     const featureKeys = await this.readTreeFeatureKeys(decompiledClientRoot, warnings);
@@ -119,6 +136,11 @@ export class TreeFeaturesExtractor {
     const referencedFeatures = new Set<string>(FUNGUS_FEATURES);
 
     for (const { key, category } of FAMILIES) {
+      // Newer families (poplar arrived in the 26.3 snapshots) are silently absent from older
+      // versions: skip a family the version shows no trace of instead of warning about every block.
+      if (category === "overworld" && !growers.has(key) && !(await this.blockstateExists(decompiledClientRoot, `${key}_log`))) {
+        continue;
+      }
       const family: TreeFamilyDefinition = {
         family: key,
         displayName: titleCase(key),
@@ -137,6 +159,9 @@ export class TreeFeaturesExtractor {
             if (slot) {
               referencedFeatures.add(slot);
             }
+          }
+          for (const variant of grower.treeVariants ?? []) {
+            referencedFeatures.add(variant.featureKey);
           }
         } else {
           warnings.push(`No TreeGrower named "${key}" was found in TreeGrower.java.`);
@@ -189,6 +214,9 @@ export class TreeFeaturesExtractor {
    * Parses every `new TreeGrower(...)` static in TreeGrower.java. The 8-argument constructor is
    * (name, secondaryChance, megaTree, secondaryMegaTree, tree, secondaryTree, flowers, secondaryFlowers);
    * the 4-argument convenience constructor is (name, megaTree, tree, flowers) with chance 0.
+   * 26.3 snapshots replaced both with (name, trees, megaTrees, flowers, defaultFeature) where each
+   * list is a WeightedList; a 9:1 oak/fancy-oak list is the old tree/secondaryTree pair with
+   * secondaryChance 1/10, so the weighted form maps losslessly onto the same slots.
    */
   private async readGrowers(
     growerPath: string,
@@ -202,6 +230,13 @@ export class TreeFeaturesExtractor {
       const args = match[1]!;
       const name = args.match(/"([a-z0-9_]+)"/)?.[1];
       if (!name) {
+        continue;
+      }
+      if (args.includes("WeightedList")) {
+        const grower = this.parseWeightedGrower(name, args, featureKeys, warnings);
+        if (grower) {
+          growers.set(name, grower);
+        }
         continue;
       }
       const chance = args.match(/"[a-z0-9_]+",\s*([\d.]+)F/);
@@ -244,6 +279,86 @@ export class TreeFeaturesExtractor {
     return growers;
   }
 
+  /**
+   * Parses the 26.3-snapshot WeightedList constructor form. Argument order is
+   * (name, trees, megaTrees, flowers, defaultFeature); each WeightedList.of(...) holds either bare
+   * TreeFeatures refs (weight 1) or `new Weighted<>(TreeFeatures.X, weight)` entries. The first
+   * entry of each list is the primary slot, the second the secondary, and the shared
+   * secondaryChance is the secondary entry's weight fraction.
+   */
+  private parseWeightedGrower(
+    name: string,
+    args: string,
+    featureKeys: Map<string, string>,
+    warnings: string[],
+  ): ParsedGrower | undefined {
+    const lists: Array<Array<{ symbol: string; weight: number }>> = [];
+    for (const list of args.matchAll(/WeightedList\.of\(((?:[^()]|\([^()]*\))*)\)/g)) {
+      const body = list[1]!;
+      const weighted = [...body.matchAll(/new Weighted<[^>]*>\(\s*TreeFeatures\.(\w+)\s*,\s*(\d+)\s*\)/g)];
+      if (weighted.length > 0) {
+        lists.push(weighted.map((entry) => ({ symbol: entry[1]!, weight: Number(entry[2]) })));
+      } else {
+        lists.push([...body.matchAll(/TreeFeatures\.(\w+)/g)].map((entry) => ({ symbol: entry[1]!, weight: 1 })));
+      }
+    }
+    if (lists.length !== 3) {
+      warnings.push(`Grower "${name}" has ${lists.length} WeightedList arguments; expected 3.`);
+      return undefined;
+    }
+
+    let secondaryChance = 0;
+    for (const [index, entries] of lists.entries()) {
+      // >2-entry trees lists are preserved in full via treeVariants below; the fixed mega/flower
+      // slots genuinely truncate, so those still warn.
+      if (entries.length > 2 && index !== 0) {
+        warnings.push(`Grower "${name}" has a WeightedList with ${entries.length} entries; only the first two are kept.`);
+      }
+      if (entries.length >= 2) {
+        const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+        const chance = entries[1]!.weight / total;
+        if (secondaryChance !== 0 && Math.abs(secondaryChance - chance) > 1e-9) {
+          warnings.push(`Grower "${name}" has WeightedLists with differing secondary fractions; using the first.`);
+        } else if (secondaryChance === 0) {
+          secondaryChance = chance;
+        }
+      }
+    }
+
+    const resolve = (entry: { symbol: string } | undefined): string | undefined => {
+      if (!entry) {
+        return undefined;
+      }
+      const featureKey = featureKeys.get(entry.symbol);
+      if (!featureKey) {
+        warnings.push(`Grower "${name}" references TreeFeatures.${entry.symbol}, which was not found in TreeFeatures.java.`);
+      }
+      return featureKey;
+    };
+
+    const [trees, megas, flowers] = lists;
+    // Slot order: [megaTree, secondaryMegaTree, tree, secondaryTree, flowers, secondaryFlowers].
+    const slots: Array<string | undefined> = [
+      resolve(megas![0]),
+      resolve(megas![1]),
+      resolve(trees![0]),
+      resolve(trees![1]),
+      resolve(flowers![0]),
+      resolve(flowers![1]),
+    ];
+    if (trees!.length > 2) {
+      const treeVariants: Array<{ featureKey: string; weight: number }> = [];
+      for (const entry of trees!) {
+        const featureKey = resolve(entry);
+        if (featureKey) {
+          treeVariants.push({ featureKey, weight: entry.weight });
+        }
+      }
+      return { name, secondaryChance, slots, treeVariants };
+    }
+    return { name, secondaryChance, slots };
+  }
+
   private toGrowerDefinition(grower: ParsedGrower): TreeGrowerDefinition {
     const [megaTree, secondaryMegaTree, tree, secondaryTree, flowers, secondaryFlowers] = grower.slots;
     return {
@@ -257,6 +372,9 @@ export class TreeFeaturesExtractor {
       ...(secondaryFlowers ? { secondaryFlowers: `minecraft:${secondaryFlowers}` } : {}),
       canBeTwoByTwo: megaTree !== undefined,
       requiresTwoByTwo: megaTree !== undefined && tree === undefined,
+      ...(grower.treeVariants
+        ? { treeVariants: grower.treeVariants.map((v) => ({ feature: `minecraft:${v.featureKey}`, weight: v.weight })) }
+        : {}),
     };
   }
 
@@ -389,8 +507,7 @@ export class TreeFeaturesExtractor {
     const fuel = new Map<string, number>();
     const path = join(root, FUEL_SOURCE);
     if (!(await fileExists(path))) {
-      warnings.push(`${FUEL_SOURCE} was not found; fuel values omitted.`);
-      return fuel;
+      return this.readItemPropertyProviders(root, "cookingFuel", "fuel", sourcePaths, warnings);
     }
     sourcePaths.push(FUEL_SOURCE);
     const source = await readFile(path, "utf8");
@@ -458,9 +575,145 @@ export class TreeFeaturesExtractor {
       compost.set(`minecraft:${match[2]!.toLowerCase()}`, Number(match[1]));
     }
     if (compost.size === 0) {
-      warnings.push("No COMPOSTABLES entries were parsed from ComposterBlock.java.");
+      return this.readItemPropertyProviders(root, "compostable", "compost", sourcePaths, warnings);
     }
     return compost;
+  }
+
+  /**
+   * 26.3-snapshot fallback for fuel/compost: Items.java tags items with
+   * `.cookingFuel(NumberProviders.X)` / `.compostable(NumberProviders.X)`, NumberProviders.java maps
+   * each symbol to a `data/minecraft/number_provider/<key>.json` file, and that JSON carries the
+   * value. Fuel files are `{type: conditional, on_false: <standard furnace ticks>, on_true: ...}`;
+   * compost files put a weighted 0/1 layer distribution under `default`, whose 1-weight fraction is
+   * exactly the old compost chance.
+   */
+  private async readItemPropertyProviders(
+    root: string,
+    method: "cookingFuel" | "compostable",
+    kind: "fuel" | "compost",
+    sourcePaths: string[],
+    warnings: string[],
+  ): Promise<Map<string, number>> {
+    const values = new Map<string, number>();
+
+    const itemsPath = join(root, ITEMS_SOURCE);
+    const providersPath = join(root, NUMBER_PROVIDERS_SOURCE);
+    if (!(await fileExists(itemsPath)) || !(await fileExists(providersPath))) {
+      warnings.push(`Neither ${kind === "fuel" ? FUEL_SOURCE : "ComposterBlock COMPOSTABLES"} nor the Items.java/NumberProviders.java pair was found; ${kind} values omitted.`);
+      return values;
+    }
+
+    const providerKeys = new Map<string, string>();
+    const providersSource = await readFile(providersPath, "utf8");
+    for (const match of providersSource.matchAll(/(\w+)\s*=\s*createKey\("([^"]+)"\)/g)) {
+      providerKeys.set(match[1]!, match[2]!);
+    }
+
+    const providerValues = new Map<string, number | undefined>();
+    const resolveProvider = async (symbol: string): Promise<number | undefined> => {
+      if (providerValues.has(symbol)) {
+        return providerValues.get(symbol);
+      }
+      let value: number | undefined;
+      const key = providerKeys.get(symbol);
+      if (!key) {
+        warnings.push(`NumberProviders.${symbol} was not found in ${NUMBER_PROVIDERS_SOURCE}.`);
+      } else {
+        const providerPath = join(root, NUMBER_PROVIDER_DIR, `${key}.json`);
+        if (!(await fileExists(providerPath))) {
+          warnings.push(`Number provider ${key} was not found under ${NUMBER_PROVIDER_DIR}.`);
+        } else {
+          value = this.evaluateNumberProvider(await readJsonFile<unknown>(providerPath), kind);
+          if (value === undefined) {
+            warnings.push(`Number provider ${key} has a shape the ${kind} reader does not understand.`);
+          }
+        }
+      }
+      providerValues.set(symbol, value);
+      return value;
+    };
+
+    const itemsSource = await readFile(itemsPath, "utf8");
+    const call = new RegExp(`\\.${method}\\(NumberProviders\\.(\\w+)\\)`);
+    for (const registration of itemsSource.matchAll(/public static final Item (\w+) =([^;]*);/g)) {
+      const providerRef = registration[2]!.match(call);
+      if (!providerRef) {
+        continue;
+      }
+      const value = await resolveProvider(providerRef[1]!);
+      if (value !== undefined) {
+        values.set(`minecraft:${registration[1]!.toLowerCase()}`, value);
+      }
+    }
+
+    if (values.size === 0) {
+      warnings.push(`No .${method}(NumberProviders.*) item registrations were parsed from ${ITEMS_SOURCE}.`);
+    } else {
+      pushUnique(sourcePaths, ITEMS_SOURCE);
+      pushUnique(sourcePaths, NUMBER_PROVIDERS_SOURCE);
+      pushUnique(sourcePaths, NUMBER_PROVIDER_DIR);
+    }
+    return values;
+  }
+
+  /**
+   * Reduces a number-provider JSON to the single value the old datasets carried: standard-furnace
+   * burn ticks for fuel (`on_false` of the fast-cooking conditional), or the chance a compost layer
+   * is added (the weight fraction of non-zero entries in the default weighted list; the
+   * empty-composter always-fills special case is deliberately ignored to keep the old semantics).
+   */
+  private evaluateNumberProvider(raw: unknown, kind: "fuel" | "compost"): number | undefined {
+    if (typeof raw === "number") {
+      return kind === "compost" ? (raw > 0 ? 1 : 0) : raw;
+    }
+    if (!isRecord(raw)) {
+      return undefined;
+    }
+    if (kind === "fuel") {
+      if (raw.type === "minecraft:conditional" && typeof raw.on_false === "number") {
+        return raw.on_false;
+      }
+      return undefined;
+    }
+    const base = raw.type === "minecraft:number_dispatcher" ? raw.default : raw;
+    if (typeof base === "number") {
+      return base > 0 ? 1 : 0;
+    }
+    if (isRecord(base) && base.type === "minecraft:weighted_list" && Array.isArray(base.distribution)) {
+      let total = 0;
+      let filled = 0;
+      for (const entry of base.distribution) {
+        if (!isRecord(entry) || typeof entry.weight !== "number" || typeof entry.data !== "number") {
+          return undefined;
+        }
+        total += entry.weight;
+        if (entry.data > 0) {
+          filled += entry.weight;
+        }
+      }
+      return total > 0 ? filled / total : undefined;
+    }
+    return undefined;
+  }
+
+  private async blockstateExists(root: string, bareId: string): Promise<boolean> {
+    return fileExists(join(root, BLOCKSTATE_DIR, `${bareId}.json`));
+  }
+
+  /** Lists `<color>_<family>_leaves` blockstates for families whose foliage ships in colored variants. */
+  private async coloredLeafVariants(root: string, family: string): Promise<string[]> {
+    let files: string[];
+    try {
+      files = await readdir(join(root, BLOCKSTATE_DIR));
+    } catch {
+      return [];
+    }
+    const suffix = `_${family}_leaves.json`;
+    return files
+      .filter((file) => file.endsWith(suffix))
+      .map((file) => file.slice(0, -".json".length))
+      .sort();
   }
 
   /** Builds the family's expected block set (role → id), verifying each block exists via its blockstate file. */
@@ -488,7 +741,20 @@ export class TreeFeaturesExtractor {
       for (const [role, suffix] of PLANK_SET_ROLES) {
         entries.push([role, `${family}_${suffix}`]);
       }
-      entries.push(["leaves", `${family}_leaves`]);
+      if (!(await this.blockstateExists(root, `${family}_leaves`))) {
+        // 26.3-snapshot poplar has no plain leaves block; its foliage ships as colored variants
+        // (red/orange/yellow_poplar_leaves). Emit each variant as its own leaves entry.
+        const colored = await this.coloredLeafVariants(root, family);
+        if (colored.length > 0) {
+          for (const bareId of colored) {
+            entries.push(["leaves", bareId]);
+          }
+        } else {
+          entries.push(["leaves", `${family}_leaves`]);
+        }
+      } else {
+        entries.push(["leaves", `${family}_leaves`]);
+      }
     } else if (category === "nether") {
       entries.push(
         ["fungus", `${family}_fungus`],
@@ -534,7 +800,7 @@ export class TreeFeaturesExtractor {
 
   /** Reads one configured feature JSON and summarizes its trunk/foliage/decorator shape. */
   private async readFeatureShape(root: string, featureKey: string, warnings: string[]): Promise<TreeFeatureShape | undefined> {
-    const relativePath = `${CONFIGURED_FEATURE_DIR}/${featureKey}.json`;
+    const relativePath = `${this.featureDir}/${featureKey}.json`;
     const path = join(root, relativePath);
     if (!(await fileExists(path))) {
       warnings.push(`Configured feature ${featureKey} referenced by a grower was not found at ${relativePath}.`);
@@ -549,7 +815,8 @@ export class TreeFeaturesExtractor {
       return undefined;
     }
 
-    const config = isRecord(raw.config) ? raw.config : {};
+    // 26.3 snapshots dropped the `config` wrapper and inline the config fields beside `type`.
+    const config = isRecord(raw.config) ? raw.config : (raw as unknown as Record<string, unknown>);
     const shape: TreeFeatureShape = {
       key: `minecraft:${featureKey}`,
       featureType: typeof raw.type === "string" ? raw.type : "unknown",
@@ -752,8 +1019,14 @@ function providerBlock(provider: unknown): string | undefined {
   return findStateName(provider);
 }
 
-/** Reads the `Name` of a blockstate literal like { "Name": "minecraft:oak_log", "Properties": {...} }. */
+/**
+ * Reads a blockstate literal: `{ "Name": "minecraft:oak_log", "Properties": {...} }` in releases,
+ * or a bare `"minecraft:oak_log"` string in the 26.3-snapshot flattened form.
+ */
 function stateName(state: unknown): string | undefined {
+  if (typeof state === "string") {
+    return state.includes("[") ? state.slice(0, state.indexOf("[")) : state;
+  }
   return isRecord(state) && typeof state.Name === "string" ? state.Name : undefined;
 }
 
@@ -822,4 +1095,10 @@ function titleCase(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function pushUnique(list: string[], value: string): void {
+  if (!list.includes(value)) {
+    list.push(value);
+  }
 }

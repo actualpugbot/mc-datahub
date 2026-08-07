@@ -20,6 +20,8 @@ import type { MobProfileExtractor } from "../extraction/mobProfileExtractor.js";
 import type { MobSoundDefinition } from "../domain/types.js";
 import type { RenderDataExtractor } from "../extraction/renderDataExtractor.js";
 import type { AnvilMechanicsExtractor } from "../extraction/anvilMechanicsExtractor.js";
+import type { FishingMechanicsExtractor } from "../extraction/fishingMechanicsExtractor.js";
+import { buildFishingOddsDataset, buildLootOddsDataset, createLootOddsData } from "../extraction/lootOdds/index.js";
 import type { SulfurCubeExtractor } from "../extraction/sulfurCubeExtractor.js";
 import type { TreeFeaturesExtractor } from "../extraction/treeFeaturesExtractor.js";
 import type { MobAnimationExtractor } from "../extraction/mobAnimationExtractor.js";
@@ -49,6 +51,7 @@ export class ProcessVersionWorkflow {
     private readonly anvilMechanicsExtractor: AnvilMechanicsExtractor,
     private readonly sulfurCubeExtractor: SulfurCubeExtractor,
     private readonly treeFeaturesExtractor: TreeFeaturesExtractor,
+    private readonly fishingMechanicsExtractor: FishingMechanicsExtractor,
     private readonly mobAnimationExtractor: MobAnimationExtractor,
     private readonly datasetStore: DatasetStore,
     private readonly stateStore: StateStore,
@@ -115,6 +118,21 @@ export class ProcessVersionWorkflow {
     dataset.anvilMechanics = await this.anvilMechanicsExtractor.extract(decompiledClientRoot);
     dataset.sulfurCube = await this.sulfurCubeExtractor.extract(decompiledClientRoot);
     dataset.treeFeatures = await this.treeFeaturesExtractor.extract(decompiledClientRoot);
+    // The odds engine reads the collections this dataset already carries, so it runs off the
+    // in-memory dataset rather than re-reading the sidecars off disk.
+    const lootOddsData = createLootOddsData({
+      lootTables: dataset.lootTables,
+      tags: dataset.tags,
+      enchantments: dataset.enchantments,
+      translations: { translations: dataset.translations },
+      itemStats: dataset.itemStats,
+      recipes: dataset.recipes,
+    });
+    const fishingMechanics = await this.fishingMechanicsExtractor.extract(decompiledClientRoot);
+    if (fishingMechanics) {
+      dataset.fishingOdds = buildFishingOddsDataset({ data: lootOddsData, mechanics: fishingMechanics });
+    }
+    dataset.lootOdds = buildLootOddsDataset({ data: lootOddsData });
     dataset.mobImages = mobImages;
     dataset.mobSounds = mobSoundData.mobSounds;
     dataset.mobModels = mobModels;

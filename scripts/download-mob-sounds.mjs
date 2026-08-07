@@ -26,8 +26,10 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(import.meta.dirname, "..");
+// import.meta.dirname needs Node >= 20.11; derive it portably for the Node 18 workspace.
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const datasetsDir = path.join(repoRoot, "workspace", "datasets");
 const statePath = path.join(repoRoot, "workspace", "state.json");
 const CONCURRENCY = 16;

@@ -1,3 +1,10 @@
+// The two odds datasets are shaped by the loot-odds engine's own consumer-facing types, which stay
+// with the engine so it remains a self-contained sub-package. Type-only, so nothing is pulled in at
+// runtime and the dependency stays one-directional where it matters.
+import type { FishingOddsDataset, LootOddsDataset } from "../extraction/lootOdds/datasets.js";
+
+export type { FishingOddsDataset, LootOddsDataset };
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -1076,6 +1083,11 @@ export interface TreeGrowerDefinition {
   canBeTwoByTwo: boolean;
   /** True when the grower has ONLY mega variants (dark oak, pale oak): a lone sapling never grows. */
   requiresTwoByTwo: boolean;
+  /**
+   * Present when the grower draws from more than two weighted tree features (26.3-snapshot poplar
+   * picks red/orange/yellow at equal weight); `tree`/`secondaryTree` then carry the first two.
+   */
+  treeVariants?: Array<{ feature: string; weight: number }>;
 }
 
 /** Trunk placer numbers from a configured tree feature. Trunk height = baseHeight + rand(randA + 1) + rand(randB + 1). */
@@ -1171,6 +1183,333 @@ export interface TreeFeaturesDataset {
   growth: TreeFeaturesGrowthMechanics;
   families: TreeFamilyDefinition[];
   features: TreeFeatureShape[];
+  sourcePaths: string[];
+  warnings: string[];
+}
+
+/* --- Fishing mechanics: the fishing loop as parsed out of the decompiled client. --- */
+
+/** A tick range as parsed from `Mth.nextInt(random, min, max)` (both ends inclusive), plus derived seconds. */
+export interface FishingTickRange {
+  minTicks: number;
+  maxTicks: number;
+  minSeconds: number;
+  maxSeconds: number;
+  /** Number of distinct integer outcomes, i.e. `maxTicks - minTicks + 1`. */
+  outcomes: number;
+}
+
+/** One step of the escalating "tease" splash chance while the wait timer runs down. */
+export interface FishingTeaseTier {
+  /** Applies while `timeUntilLured` is strictly below this many ticks. */
+  belowTicks: number;
+  /** Added chance per tick below the threshold. */
+  perTickBelow: number;
+}
+
+export interface FishingTeaseChance {
+  baseChance?: number;
+  tiers: FishingTeaseTier[];
+}
+
+export interface FishingWaitTime {
+  /** The `timeUntilLured` roll made when a fresh fishing cycle starts, before lure is applied. */
+  baseRoll?: FishingTickRange;
+  /**
+   * How the parsed `lureSpeed` value enters the wait: `initial_roll_subtraction` means the code
+   * subtracts it once from the freshly rolled countdown (it does not change the per-tick decrement).
+   */
+  lureApplication?: "initial_roll_subtraction" | "countdown_decrement";
+  /** Verbatim Java of the statement that applies lure to the roll. */
+  lureApplicationSource?: string;
+  /** Name of the per-tick decrement variable used by the countdown (`fishingSpeed`). */
+  countdownVariable?: string;
+  /** The per-tick decrement before weather/sky adjustments. */
+  countdownBaseSpeed?: number;
+  /**
+   * True when a wait roll that lands at or below zero after lure falls through to the re-roll
+   * branch on the next tick instead of biting immediately.
+   */
+  rerollsWhenNonPositive?: boolean;
+  teaseChance?: FishingTeaseChance;
+  sourcePath: string;
+}
+
+export interface FishingSpeedModifier {
+  /** Independent per-tick random chance that this modifier applies. */
+  chance: number;
+  /** Amount added to `fishingSpeed` when it applies (rain +1, no sky -1). */
+  speedDelta: number;
+  /** The Java predicate that gates the modifier. */
+  condition: string;
+}
+
+export interface FishingWeatherEffects {
+  /** Block offset (relative to the bobber's block position) at which weather and sky are sampled. */
+  checkOffsetY?: number;
+  /** Base value of `fishingSpeed` before modifiers. */
+  baseSpeed?: number;
+  rain?: FishingSpeedModifier;
+  /** The sky-visibility modifier: an obstructed sky *slows* the countdown. */
+  obstructedSky?: FishingSpeedModifier;
+  /** Expected per-tick countdown decrement for each combination, i.e. the speedup factor. */
+  expectedSpeed?: {
+    clearSkyVisible: number;
+    rainingSkyVisible: number;
+    clearSkyObstructed: number;
+    rainingSkyObstructed: number;
+  };
+  sourcePath: string;
+}
+
+export interface FishingHookWindow {
+  /** `timeUntilHooked`: the fish approaches for this long after the wait expires. */
+  approachRoll?: FishingTickRange;
+  /** `nibble`: the catchable window during which retrieving the rod rolls the loot table. */
+  catchableRoll?: FishingTickRange;
+  /** Per-tick wobble applied to the approaching fish's angle, from `random.triangle(center, radius)` in degrees. */
+  fishAngleWobble?: { center: number; radius: number };
+  /** Horizontal offset of the fish trail from the bobber: `remainingTicks * this` blocks. */
+  fishApproachBlocksPerRemainingTick?: number;
+  /** Chance per tick that the approaching fish also emits a bubble particle. */
+  approachBubbleParticleChance?: number;
+  /**
+   * Name of the per-tick decrement the `timeUntilHooked` countdown subtracts. On 26.2 this is the
+   * same `fishingSpeed` the wait countdown uses, so rain and sky shorten the approach too.
+   */
+  approachDecrementVariable?: string;
+  /** Per-tick decrement applied to `nibble`, which counts down in plain ticks rather than by `fishingSpeed`. */
+  nibbleDecrementPerTick?: number;
+  /** True when letting the nibble window lapse resets both timers and clears the biting flag. */
+  missedBiteResetsTimers?: boolean;
+  sourcePath: string;
+}
+
+export interface FishingOpenWaterBlockRules {
+  /** Air is classified ABOVE_WATER. */
+  airIsAboveWater?: boolean;
+  /** Lily pads are classified exactly like air, so they never break open water. */
+  lilyPadIsAboveWater?: boolean;
+  /** INSIDE_WATER requires the block's fluid to be in the water fluid tag. */
+  requiresWaterFluidTag?: boolean;
+  /** INSIDE_WATER requires a fluid *source*; flowing water is INVALID. */
+  requiresSourceFluid?: boolean;
+  /** INSIDE_WATER requires an empty collision shape, so waterlogged solid blocks are INVALID. */
+  requiresEmptyCollisionShape?: boolean;
+  /** Derived: waterlogged blocks with a collision shape (stairs, slabs, fences) invalidate the scan. */
+  waterloggedSolidBlocksAreInvalid?: boolean;
+  /**
+   * Derived from BubbleColumnBlock: it reports a water *source* fluid state and an empty shape, so a
+   * bubble column satisfies the INSIDE_WATER test.
+   */
+  bubbleColumnIsInsideWater?: boolean;
+}
+
+export interface FishingOpenWater {
+  /** Lowest scanned layer, relative to the bobber's block position. */
+  layerMinY?: number;
+  /** Highest scanned layer, relative to the bobber's block position. */
+  layerMaxY?: number;
+  layerCount?: number;
+  /** Minimum horizontal offset of each scanned layer (`blockPos.offset(min, y, min)`). */
+  areaMinOffsetXZ?: number;
+  /** Maximum horizontal offset of each scanned layer (`blockPos.offset(max, y, max)`). */
+  areaMaxOffsetXZ?: number;
+  areaWidth?: number;
+  areaDepth?: number;
+  blocksPerLayer?: number;
+  totalBlocksScanned?: number;
+  /** Every block in one layer must classify identically, otherwise the layer is INVALID. */
+  layerRequiresUniformClassification?: boolean;
+  /** Ordered plain-English description of the layer state machine in `calculateOpenWater`. */
+  layerRules?: string[];
+  /** Open water is only re-checked once a fish is on its way (`nibble > 0 || timeUntilHooked > 0`). */
+  reevaluatedOnlyOnceLuredOrBiting?: boolean;
+  /** Once false during a cycle the flag stays false (`openWater = openWater && ...`). */
+  latchesFalseUntilTimersReset?: boolean;
+  /** The `outOfWaterTime < N` guard that also clears the flag. */
+  outOfWaterTimeLimit?: number;
+  /** The `MAX_OUT_OF_WATER_TIME` constant that clamps the counter. */
+  maxOutOfWaterTime?: number;
+  outOfWaterIncrementPerTick?: number;
+  outOfWaterDecrementPerTick?: number;
+  blockRules?: FishingOpenWaterBlockRules;
+  /** False on 26.2: `retrieve` never consults `openWater`; only the loot condition does. */
+  enforcedInRetrieveCode?: boolean;
+  /** True when the fishing loot table gates an entry on the `in_open_water` hook predicate. */
+  enforcedByLootCondition?: boolean;
+  sourcePaths: string[];
+}
+
+/** A data-driven enchantment value effect of the form `add(linear(base, perLevelAboveFirst))`. */
+export interface FishingEnchantmentScaling {
+  id: string;
+  /** The enchantment effect component the value feeds (`minecraft:fishing_luck_bonus` etc.). */
+  effectComponent: string;
+  effectType?: string;
+  valueType?: string;
+  base?: number;
+  perLevelAboveFirst?: number;
+  maxLevel?: number;
+  /** Value at each level from 1 to `maxLevel`, computed as `base + (level - 1) * perLevelAboveFirst`. */
+  perLevel: Array<{ level: number; value: number }>;
+  sourcePath: string;
+}
+
+/** A mob effect whose only job is to shift the `minecraft:luck` attribute. */
+export interface FishingLuckEffect {
+  id: string;
+  attribute?: string;
+  /** The `addAttributeModifier` amount, applied once per amplifier step. */
+  amount?: number;
+  operation?: string;
+  /** Verbatim Java of `MobEffect.AttributeTemplate.create`. */
+  amplifierExpression?: string;
+  /** Resulting luck delta at potion level 1..3 (amplifier 0..2). */
+  perLevel: Array<{ level: number; amplifier: number; luckDelta: number }>;
+}
+
+export interface FishingLuckSources {
+  /** The clamp `FishingHook` applies to its `luck` constructor parameter. */
+  hookClampMinimum?: number;
+  hookClampSource?: string;
+  /** The `EnchantmentHelper` method `FishingRodItem` calls. */
+  helperMethod?: string;
+  helperClampMinimum?: number;
+  enchantment?: FishingEnchantmentScaling;
+  /** True when the player's Luck attribute is added on top of the hook's enchantment luck. */
+  playerLuckAttributeAdded?: boolean;
+  /** Verbatim Java of the `withLuck(...)` call that seeds the loot context. */
+  lootLuckSource?: string;
+  luckAttribute?: { id: string; defaultValue: number; minValue: number; maxValue: number };
+  luckEffect?: FishingLuckEffect;
+  unluckEffect?: FishingLuckEffect;
+  sourcePaths: string[];
+}
+
+/** The wait-time range that results from a given lure level, plus the odds that roll is discarded. */
+export interface FishingLureLevelEffect {
+  level: number;
+  /** Value of the `fishing_time_reduction` effect, in seconds. */
+  seconds: number;
+  /** `lureSpeed` in ticks, after `FishingRodItem` multiplies by 20 and truncates to int. */
+  ticks: number;
+  /** Raw `roll - lureSpeed` bounds; values at or below zero are re-rolled rather than used. */
+  rawWaitMinTicks: number;
+  rawWaitMaxTicks: number;
+  /** Shortest wait that can actually be observed (a non-positive roll is discarded). */
+  effectiveWaitMinTicks: number;
+  effectiveWaitMinSeconds: number;
+  effectiveWaitMaxTicks: number;
+  effectiveWaitMaxSeconds: number;
+  /** Probability that a single roll comes out non-positive and is therefore re-rolled. */
+  rerollChance: number;
+}
+
+export interface FishingLureSources {
+  /** The clamp `FishingHook` applies to its `lureSpeed` constructor parameter. */
+  hookClampMinimum?: number;
+  hookClampSource?: string;
+  helperMethod?: string;
+  helperClampMinimum?: number;
+  /** Ticks per second used by `FishingRodItem` when converting the enchantment's seconds to ticks. */
+  secondsToTicks?: number;
+  /** Verbatim Java of the seconds-to-ticks conversion. */
+  conversionSource?: string;
+  /** True when the conversion casts to `int`, truncating fractional ticks toward zero. */
+  truncatesToInt?: boolean;
+  enchantment?: FishingEnchantmentScaling;
+  /** Derived wait outcomes for lure level 0 (unenchanted) through the enchantment's max level. */
+  perLevel: FishingLureLevelEffect[];
+  sourcePaths: string[];
+}
+
+export interface FishingWeightFormula {
+  /** Verbatim Java of `LootPoolSingletonContainer.EntryBase.getWeight(float)`. */
+  javaSource?: string;
+  /** Readable form of the same expression. */
+  expression?: string;
+  /** Symbol names as they appear in the parsed Java, in `weight + quality * luck` order. */
+  components?: { weight: string; quality: string; luck: string };
+  /** Default `weight` when a loot entry omits it. */
+  defaultWeight?: number;
+  /** Default `quality` when a loot entry omits it. */
+  defaultQuality?: number;
+  /** True when the result is floored before clamping. */
+  floors?: boolean;
+  /** The lower clamp applied after flooring. */
+  clampMinimum?: number;
+  /** How Java types the arithmetic, which determines where truncation happens. */
+  arithmeticNotes?: string;
+  /** Entries whose effective weight is not strictly greater than this are dropped from the pool. */
+  entryIncludedWhenWeightGreaterThan?: number;
+  /** Verbatim Java of the uniform pick over the summed weights. */
+  selectionSource?: string;
+  /** Verbatim Java of the roll count, which luck also inflates through `bonus_rolls`. */
+  bonusRollsSource?: string;
+  sourcePaths: string[];
+}
+
+export interface FishingLootEntry {
+  type: string;
+  value?: string;
+  /** Only present when the JSON declares it; otherwise the codec default in `weightFormula` applies. */
+  weight?: number;
+  /** Only present when the JSON declares it; otherwise the codec default in `weightFormula` applies. */
+  quality?: number;
+  /** True when the entry carries the `in_open_water` fishing-hook predicate. */
+  requiresOpenWater: boolean;
+}
+
+export interface FishingLootPool {
+  rolls?: number;
+  bonusRolls?: number;
+  entries: FishingLootEntry[];
+}
+
+export interface FishingLootTableInfo {
+  /** The registry key `FishingHook.retrieve` looks up. */
+  id?: string;
+  paramSet?: string;
+  /** Loot context params set on the `LootParams.Builder`, in source order. */
+  contextParams: string[];
+  pools: FishingLootPool[];
+  sourcePaths: string[];
+}
+
+export interface FishingXpReward {
+  /** `random.nextInt(N) + M` bounds of the orb spawned per caught stack. */
+  minPerCatch?: number;
+  maxPerCatch?: number;
+  expression?: string;
+  /** True when one orb is spawned per item stack the loot table produced. */
+  awardedPerCaughtStack?: boolean;
+  /** Rod durability consumed when a fish is reeled in. */
+  rodDamageOnCatch?: number;
+  /** Rod durability consumed when an item entity is reeled in. */
+  rodDamageOnItemEntity?: number;
+  /** Rod durability consumed when any other entity is reeled in. */
+  rodDamageOnEntity?: number;
+  /** Rod durability consumed when the bobber landed on the ground. */
+  rodDamageOnGround?: number;
+  /** Horizontal pull speed applied to the caught item entity. */
+  itemPullSpeed?: number;
+  /** Vertical arc multiplier applied to the caught item entity. */
+  itemPullArcMultiplier?: number;
+  sourcePath: string;
+}
+
+/** Everything the fishing loop does, derived field by field from decompiled source. */
+export interface FishingMechanics {
+  waitTime: FishingWaitTime;
+  rain: FishingWeatherEffects;
+  hookWindow: FishingHookWindow;
+  openWater: FishingOpenWater;
+  luckSources: FishingLuckSources;
+  lureSources: FishingLureSources;
+  weightFormula: FishingWeightFormula;
+  lootTable: FishingLootTableInfo;
+  xp: FishingXpReward;
   sourcePaths: string[];
   warnings: string[];
 }
@@ -1275,6 +1614,91 @@ export interface BiomeDefinition {
   raw: JsonValue;
 }
 
+/** One world-generation vertical envelope used to resolve relative height anchors. */
+export interface OreGenerationDimension {
+  id: "overworld" | "nether" | "end" | "unknown";
+  minY: number;
+  maxY: number;
+  /** Lowest Y with a zero bedrock-floor replacement chance, when the surface rules declare one. */
+  bedrockFloorFreeAtOrAbove?: number;
+  sourcePath: string;
+}
+
+/** Exact height probability and expected configured feature placements at one Y level. */
+export interface OreHeightCurvePoint {
+  y: number;
+  /** Exact height-provider probability for a single feature; omitted on curves that combine features. */
+  probability?: number;
+  /** Placement attempts, not guaranteed ore blocks; terrain targets and air exposure still apply. */
+  expectedPlacementsPerChunk: number;
+}
+
+/** One configured ore feature joined to its placed-feature distribution and biome usage. */
+export interface OreGenerationFeature {
+  id: string;
+  configuredFeatureId: string;
+  resourceId: string;
+  dimension: OreGenerationDimension["id"];
+  biomeIds: string[];
+  oreBlockIds: string[];
+  replaceableTags: string[];
+  generationType: "ore" | "scattered_ore";
+  veinSize: number;
+  discardChanceOnAirExposure: number;
+  configuredAttemptsPerChunk: number;
+  inBoundsExpectedPlacementsPerChunk: number;
+  height: {
+    type: "uniform" | "trapezoid";
+    minInclusive: number;
+    maxInclusive: number;
+    plateau: number;
+  };
+  curve: OreHeightCurvePoint[];
+  configuredFeatureSourcePath: string;
+  placedFeatureSourcePath: string;
+}
+
+/** A unique biome-specific combination of ore features, ready for a Best Y Level UI. */
+export interface OreDistributionContext {
+  id: string;
+  label: string;
+  dimension: OreGenerationDimension["id"];
+  biomeIds: string[];
+  featureIds: string[];
+  oreBlockIds: string[];
+  configuredAttemptsPerChunk: number;
+  inBoundsExpectedPlacementsPerChunk: number;
+  /** Mathematical maximum of the configured in-bounds placement curve. */
+  bestY: number;
+  bestYRange: { min: number; max: number };
+  /** Best level after excluding the probabilistic bedrock-floor band. */
+  recommendedY: number;
+  recommendedYRange: { min: number; max: number };
+  curve: OreHeightCurvePoint[];
+}
+
+/** One player-facing ore/resource and every biome context in which its generation differs. */
+export interface OreDistributionDefinition {
+  id: string;
+  key: string;
+  name: string;
+  oreBlockIds: string[];
+  contexts: OreDistributionContext[];
+}
+
+/**
+ * Data-driven ore placement dataset. Curves measure configured placement attempts rather than
+ * guaranteed block counts: vein geometry, replaceable terrain, biome shape and air exposure make
+ * the final number of generated blocks world-dependent.
+ */
+export interface OreGenerationDataset {
+  metric: "configured_feature_placement_attempts";
+  dimensions: OreGenerationDimension[];
+  features: OreGenerationFeature[];
+  ores: OreDistributionDefinition[];
+  warnings: string[];
+}
+
 /** A dye color as it applies to banners (base color + pattern tint). */
 export interface BannerColorDefinition {
   /** Bare dye id, e.g. `light_blue`. */
@@ -1317,6 +1741,54 @@ export interface BannerDataset {
   colors: BannerColorDefinition[];
 }
 
+/** One item stack on either side of a villager offer. */
+export interface VillagerTradeItem {
+  id: string;
+  name: string;
+  count: number;
+  components?: { [key: string]: JsonValue };
+}
+
+/** One concrete offer from the data-driven villager_trade registry. */
+export interface VillagerTradeDefinition {
+  id: string;
+  wants: VillagerTradeItem;
+  additionalWants?: VillagerTradeItem;
+  gives: VillagerTradeItem;
+  maxUses: number;
+  villagerXp: number;
+  reputationDiscount: number;
+  modifierFunctions: string[];
+  /** True when an output modifier adds a variable amount to a zero-count base price. */
+  dynamicPrice: boolean;
+  doubleTradePriceEnchantments?: string;
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+/** A profession level (or wandering-trader category) and the offers sampled from it. */
+export interface VillagerTradePool {
+  id: string;
+  profession: string;
+  level?: number;
+  category?: string;
+  amount: number;
+  allowDuplicates: boolean;
+  tradeIds: string[];
+  /** Chance one named offer appears when every candidate is eligible. */
+  selectionChance: number;
+  sourcePath: string;
+  raw: JsonValue;
+}
+
+/** Joined villager_trade, villager_trade tag, and trade_set registries. */
+export interface VillagerTradeDataset {
+  edition: "java";
+  trades: VillagerTradeDefinition[];
+  pools: VillagerTradePool[];
+  warnings: string[];
+}
+
 export interface VersionDataset {
   version: string;
   generatedAt: string;
@@ -1354,6 +1826,10 @@ export interface VersionDataset {
   sulfurCube?: SulfurCubeDataset;
   /** Source-derived tree growers, growth mechanics, feature shapes, and per-block wood stats. Optional so older datasets still load. */
   treeFeatures?: TreeFeaturesDataset;
+  /** The fishing loop plus the exact luck x open-water odds grid, curated scenarios, and the derived wait-time model. Optional so older datasets still load. */
+  fishingOdds?: FishingOddsDataset;
+  /** Exact odds for bartering, archaeology, gifts, mob drops per looting level, and chest loot. Optional so older datasets still load. */
+  lootOdds?: LootOddsDataset;
   /** Worldgen structure definitions (jigsaw config included). Optional so older datasets still load. */
   structures?: StructureDefinition[];
   /** Jigsaw template pools. Optional so older datasets still load. */
@@ -1364,6 +1840,10 @@ export interface VersionDataset {
   structureTemplates?: StructureTemplateDefinition[];
   /** Banner pattern catalog + dye colors. Optional so older datasets still load. */
   banners?: BannerDataset;
+  /** Data-driven villager and wandering-trader offers with resolved selection pools. */
+  villagerTrades?: VillagerTradeDataset;
+  /** Data-driven ore height distributions, biome contexts, vein sizes, and air-exposure rules. */
+  oreGeneration?: OreGenerationDataset;
   renderData?: MinecraftRenderDataset;
   mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
   resourcePack?: ResourcePackDefinition;

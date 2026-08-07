@@ -37,7 +37,8 @@
     "format": "prettier --write \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
     "format:check": "prettier --check \"{src,test,scripts}/**/*.{ts,mjs,js}\"",
     "dev:cli": "tsx src/cli.ts",
-    "build:pages": "node scripts/build-pages-assets.mjs"
+    "build:pages": "node scripts/build-pages-assets.mjs",
+    "build:villager-trades": "npm run build && node scripts/build-villager-trades.mjs"
   },
   "dependencies": {
     "cheerio": "1.0.0",

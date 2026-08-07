@@ -259,12 +259,29 @@ describe("dataset store", () => {
       }),
       "utf8",
     );
+    await fs.writeFile(
+      join(directory, "ore-generation.json"),
+      JSON.stringify({
+        version: "25w15a",
+        generatedAt: "2026-04-09T00:00:00.000Z",
+        metric: "configured_feature_placement_attempts",
+        dimensions: [],
+        features: [],
+        ores: [],
+        warnings: [],
+      }),
+      "utf8",
+    );
 
     const loaded = await store.loadDataset("25w15a");
 
     expect(loaded.biomes.map((biome) => biome.id)).toEqual(["minecraft:plains"]);
     expect(loaded.banners?.patterns.map((pattern) => pattern.id)).toEqual(["stripe_bottom"]);
     expect(loaded.banners?.colors.map((color) => color.id)).toEqual(["white"]);
+    expect(loaded.oreGeneration).toMatchObject({
+      metric: "configured_feature_placement_attempts",
+      ores: [],
+    });
   });
 
   test("saves minecraft.wiki mob sound snapshots with timestamped paths", async () => {

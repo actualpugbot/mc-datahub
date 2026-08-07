@@ -16,6 +16,7 @@ import type {
   MinecraftWikiMobSoundAlignment,
   MinecraftWikiMobSoundSnapshot,
   MinecraftRenderDataset,
+  OreGenerationDataset,
   MobAnimationDefinition,
   MobImageDefinition,
   MobModelDefinition,
@@ -128,6 +129,34 @@ export class DatasetStore {
         : []),
       writeJsonFile(join(directory, "tags.json"), dataset.tags),
       writeJsonFile(join(directory, "loot-tables.json"), dataset.lootTables),
+      ...(dataset.fishingOdds
+        ? [
+            writeJsonFile(join(directory, "fishing-odds.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.fishingOdds,
+            }),
+          ]
+        : []),
+      ...(dataset.lootOdds
+        ? [
+            // Compact JSON on purpose: every mob, chest and gift table at every context makes this
+            // file far too large to pretty-print.
+            writeTextFile(
+              join(directory, "loot-odds.json"),
+              JSON.stringify({ version: dataset.version, generatedAt: dataset.generatedAt, ...dataset.lootOdds }),
+            ),
+          ]
+        : []),
+      ...(dataset.oreGeneration
+        ? [
+            writeJsonFile(join(directory, "ore-generation.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.oreGeneration,
+            }),
+          ]
+        : []),
       writeJsonFile(join(directory, "advancements.json"), dataset.advancements),
       writeJsonFile(join(directory, "biomes.json"), {
         version: dataset.version,
@@ -140,6 +169,15 @@ export class DatasetStore {
         patterns: dataset.banners?.patterns ?? [],
         colors: dataset.banners?.colors ?? [],
       }),
+      ...(dataset.villagerTrades
+        ? [
+            writeJsonFile(join(directory, "villager-trades.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.villagerTrades,
+            }),
+          ]
+        : []),
       ...structureWrites(directory, dataset),
       writeJsonFile(join(directory, "translations.json"), {
         version: dataset.version,
@@ -212,6 +250,7 @@ export class DatasetStore {
     >(join(directory, "dataset.json"));
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
+    const oreGeneration = dataset.oreGeneration ?? (await this.loadOreGenerationSidecar(directory));
     const mobModels = this.normalizeMobModelTextureAssets(dataset.mobModels ?? (await this.loadMobModelSidecar(directory)));
     const blockEntityModels = this.normalizeMobModelTextureAssets(
       dataset.blockEntityModels ?? (await this.loadBlockEntityModelSidecar(directory)),
@@ -247,6 +286,7 @@ export class DatasetStore {
       translations: dataset.translations ?? [],
       biomes,
       banners,
+      oreGeneration,
       structures,
       templatePools,
       processorLists,
@@ -294,6 +334,17 @@ export class DatasetStore {
       colors?: BannerDataset["colors"];
     }>(path);
     return payload.banners ?? { patterns: payload.patterns ?? [], colors: payload.colors ?? [] };
+  }
+
+  private async loadOreGenerationSidecar(directory: string): Promise<OreGenerationDataset | undefined> {
+    const path = join(directory, "ore-generation.json");
+    if (!(await fileExists(path))) {
+      return undefined;
+    }
+
+    const payload = await readJsonFile<OreGenerationDataset & { version?: string; generatedAt?: string }>(path);
+    const { version: _version, generatedAt: _generatedAt, ...oreGeneration } = payload;
+    return oreGeneration;
   }
 
   private async loadMobModelSidecar(directory: string): Promise<MobModelDefinition[]> {

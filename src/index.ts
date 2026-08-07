@@ -17,6 +17,7 @@ import { RenderDataExtractor } from "./extraction/renderDataExtractor.js";
 import { AnvilMechanicsExtractor } from "./extraction/anvilMechanicsExtractor.js";
 import { SulfurCubeExtractor } from "./extraction/sulfurCubeExtractor.js";
 import { TreeFeaturesExtractor } from "./extraction/treeFeaturesExtractor.js";
+import { FishingMechanicsExtractor } from "./extraction/fishingMechanicsExtractor.js";
 import { MobAnimationExtractor } from "./extraction/mobAnimationExtractor.js";
 import { DecompiledSourceExtractor } from "./extraction/sourceDerivedExtractor.js";
 import { MappingResolver } from "./mappings/mappingResolver.js";
@@ -49,6 +50,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const anvilMechanicsExtractor = new AnvilMechanicsExtractor(logger);
   const sulfurCubeExtractor = new SulfurCubeExtractor(logger);
   const treeFeaturesExtractor = new TreeFeaturesExtractor(logger);
+  const fishingMechanicsExtractor = new FishingMechanicsExtractor(logger);
   const mobAnimationExtractor = new MobAnimationExtractor(logger);
   const datasetStore = new DatasetStore(config.workspace, logger);
   const diffEngine = new DiffEngine();
@@ -69,6 +71,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     anvilMechanicsExtractor,
     sulfurCubeExtractor,
     treeFeaturesExtractor,
+    fishingMechanicsExtractor,
     mobAnimationExtractor,
     datasetStore,
     state,
@@ -98,6 +101,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     anvilMechanicsExtractor,
     sulfurCubeExtractor,
     treeFeaturesExtractor,
+    fishingMechanicsExtractor,
     mobAnimationExtractor,
     datasetStore,
     diffEngine,

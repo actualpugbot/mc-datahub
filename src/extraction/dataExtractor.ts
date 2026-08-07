@@ -33,6 +33,8 @@ import { buildBanners } from "./banners.js";
 import { buildBiomes } from "./biomes.js";
 import { enrichEnchantments } from "./enchantments.js";
 import { buildStructureData } from "./structures.js";
+import { buildOreGeneration } from "./oreGeneration.js";
+import { buildVillagerTrades } from "./villagerTrades.js";
 
 const BLOCKSTATE_PREFIX = "assets/minecraft/blockstates/";
 const MODEL_PREFIX = "assets/minecraft/models/";
@@ -68,8 +70,10 @@ export class MinecraftDataExtractor {
     const translations = await this.readTranslations(paths, source);
     const enchantments = enrichEnchantments(await this.readEnchantments(paths, source), tags, translations);
     const biomes = await buildBiomes(paths, source, tags, translations);
+    const oreGeneration = await buildOreGeneration(paths, source, biomes);
     const banners = buildBanners(translations, paths);
     const structureData = await buildStructureData(paths, source);
+    const villagerTrades = await buildVillagerTrades(paths, source, translations);
 
     return {
       version,
@@ -92,11 +96,13 @@ export class MinecraftDataExtractor {
       advancements,
       translations,
       biomes,
+      oreGeneration,
       banners,
       structures: structureData.structures,
       templatePools: structureData.templatePools,
       processorLists: structureData.processorLists,
       structureTemplates: structureData.structureTemplates,
+      villagerTrades,
       mobImages: [],
       mobSounds: [],
       mobModels: [],

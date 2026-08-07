@@ -1358,7 +1358,11 @@ function compressKeyframes(keyframes: MobAnimationKeyframe[]): MobAnimationKeyfr
 }
 
 function buildState(stateDefaults: Map<string, unknown>, preset: PresetSpec, tick: number): object {
-  const state: Record<string, unknown> = {};
+  const state: Record<string, unknown> = {
+    // 26.3-snapshot HumanoidModel resolves arm poses through this method instead of the old
+    // leftArmPose/rightArmPose fields; a resting mob always answers EMPTY.
+    getArmPose: () => ARM_POSE.EMPTY,
+  };
   for (const [name, value] of stateDefaults) {
     state[name] = value;
   }
@@ -1493,7 +1497,14 @@ const ARM_POSE: Record<string, EnumValue> = Object.fromEntries(
     "SPEAR",
   ].map((name) => [name, makeArmPose(name)]),
 );
-const HUMANOID_ARM = { LEFT: { name: "LEFT" }, RIGHT: { name: "RIGHT" } };
+// 26.3 snapshots resolve hands to arms via InteractionHand.asArm(mainArm)/HumanoidArm.getOpposite().
+const HUMANOID_ARM = (() => {
+  const left: Record<string, unknown> = { name: "LEFT" };
+  const right: Record<string, unknown> = { name: "RIGHT" };
+  left.getOpposite = () => right;
+  right.getOpposite = () => left;
+  return { LEFT: left, RIGHT: right };
+})();
 const POSE = Object.fromEntries(
   [
     "STANDING",
@@ -1514,7 +1525,10 @@ const POSE = Object.fromEntries(
   ].map((name) => [name, { name }]),
 );
 const SWING_TYPE = { NONE: { name: "NONE" }, STAB: { name: "STAB" }, SWING: { name: "SWING" } };
-const INTERACTION_HAND = { MAIN_HAND: { name: "MAIN_HAND" }, OFF_HAND: { name: "OFF_HAND" } };
+const INTERACTION_HAND = {
+  MAIN_HAND: { name: "MAIN_HAND", asArm: (mainArm: { getOpposite(): unknown }) => mainArm },
+  OFF_HAND: { name: "OFF_HAND", asArm: (mainArm: { getOpposite(): unknown }) => mainArm.getOpposite() },
+};
 
 const MTH_STUB = {
   PI: Math.PI,

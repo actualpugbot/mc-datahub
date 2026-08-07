@@ -11,6 +11,7 @@ import type { VersionDataset, VersionMetadata } from "./domain/types.js";
 import { structureFileWrites } from "./datasets/datasetStore.js";
 import { buildBanners } from "./extraction/banners.js";
 import { buildJukeboxSongs } from "./extraction/jukeboxSongs.js";
+import { buildOreGeneration } from "./extraction/oreGeneration.js";
 import { buildStructureData } from "./extraction/structures.js";
 import { createDefaultContext } from "./index.js";
 
@@ -31,6 +32,10 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   biomes: (dataset) => dataset.biomes,
   "sulfur-cube": (dataset) => dataset.sulfurCube ?? null,
   "tree-features": (dataset) => dataset.treeFeatures ?? null,
+  "fishing-odds": (dataset) => dataset.fishingOdds ?? null,
+  "loot-odds": (dataset) => dataset.lootOdds ?? null,
+  "ore-generation": (dataset) => dataset.oreGeneration ?? null,
+  "villager-trades": (dataset) => dataset.villagerTrades ?? null,
   banners: (dataset) => dataset.banners ?? { patterns: [], colors: [] },
   "mob-images": (dataset) => dataset.mobImages,
   "mob-models": (dataset) => dataset.mobModels,
@@ -286,6 +291,35 @@ async function main(): Promise<void> {
         return;
       }
 
+      console.log(JSON.stringify(payload, null, 2));
+    });
+
+  dumpCommand
+    .command("ore-generation")
+    .argument("<version>", "Minecraft version id with a processed dataset and downloaded client/server jars")
+    .option("--output <path>", "Write ore-generation.json to a file instead of stdout")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const dataset = await context.datasetStore.loadDataset(version);
+      const downloadsDir = versionDownloadsDir(context.config.workspace, version);
+      const sources = [];
+      for (const fileName of ["client.jar", "server.jar"]) {
+        const jarPath = join(downloadsDir, fileName);
+        if (await fileExists(jarPath)) sources.push(new ZipArchiveSource(jarPath));
+      }
+      if (sources.length === 0) {
+        throw new Error(`No downloaded client.jar/server.jar was found for ${version}. Looked in ${downloadsDir}.`);
+      }
+
+      const source = new MergedArchiveSource(sources);
+      const oreGeneration = await buildOreGeneration(await source.listPaths(), source, dataset.biomes);
+      const payload = { version, generatedAt: new Date().toISOString(), ...oreGeneration };
+      if (options.output) {
+        const outputPath = resolve(process.cwd(), options.output);
+        await writeJsonFile(outputPath, payload);
+        console.log(JSON.stringify({ version, oreCount: oreGeneration.ores.length, outputPath }, null, 2));
+        return;
+      }
       console.log(JSON.stringify(payload, null, 2));
     });
 

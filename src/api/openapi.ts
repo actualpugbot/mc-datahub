@@ -29,6 +29,22 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
     summary:
       "Source-derived wood families: sapling growers and growth mechanics, configured tree/fungus shapes, and per-block flammability, furnace fuel, and compost stats.",
   },
+  {
+    slug: "fishing-odds",
+    key: "fishingOdds",
+    summary:
+      "The fishing loop as parsed from source, the exact luck x open-water odds grid, curated scenarios, and the derived wait-time model.",
+  },
+  {
+    slug: "loot-odds",
+    key: "lootOdds",
+    summary: "Exact odds for bartering, archaeology, gifts, mob drops at each looting level, and chest loot.",
+  },
+  {
+    slug: "ore-generation",
+    key: "oreGeneration",
+    summary: "Data-driven ore placement-attempt curves by Y level, including biome contexts, vein sizes, and air-exposure rules.",
+  },
   { slug: "tags", key: "tags", summary: "Registry tags (block, item, fluid, entity_type, …) and their values." },
   { slug: "loot-tables", key: "lootTables", summary: "Loot tables with derived item drops and functions." },
   { slug: "advancements", key: "advancements", summary: "Advancement tree with criteria, display keys, and rewards." },

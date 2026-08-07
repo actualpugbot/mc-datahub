@@ -4,7 +4,9 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "workspace/**"],
+    // `.claude/**` holds throwaway agent worktrees, which are full copies of this repo; linting
+    // them reports every finding once per worktree.
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "workspace/**", ".claude/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
