@@ -108,6 +108,23 @@ const BLOCK_ENTITY_MODEL_SPECS: BlockEntityModelSpec[] = [
     modelLayers: ["bell"],
     texturePaths: ["assets/minecraft/textures/entity/bell/bell_body.png"],
   },
+  {
+    // CopperGolemStatueBlockRenderer bakes one model per POSE value and picks
+    // the texture from the block's weathering state, so all four pose layers
+    // and all four oxidation textures ship together; the eight statue block
+    // ids (four weathering stages x waxed/unwaxed) all resolve into this one
+    // entry. The eyes layer is deliberately absent: statues are never lit.
+    id: "minecraft:copper_golem_statue",
+    localId: "copper_golem_statue",
+    displayName: "Copper Golem Statue",
+    modelLayers: ["copper_golem", "copper_golem_running", "copper_golem_sitting", "copper_golem_star"],
+    texturePaths: [
+      "assets/minecraft/textures/entity/copper_golem/copper_golem.png",
+      "assets/minecraft/textures/entity/copper_golem/copper_golem_exposed.png",
+      "assets/minecraft/textures/entity/copper_golem/copper_golem_weathered.png",
+      "assets/minecraft/textures/entity/copper_golem/copper_golem_oxidized.png",
+    ],
+  },
 ];
 
 interface ParsedLayerExpression {
