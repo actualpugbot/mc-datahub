@@ -119,6 +119,7 @@ export interface RecipeResultDefinition {
   item?: string;
   tag?: string;
   count?: number;
+  components?: { [key: string]: JsonValue };
 }
 
 export interface RecipeDefinition {
@@ -204,6 +205,10 @@ export interface BlockPropertyDefinition {
   id: string;
   sourcePath: string;
   sourceSymbol: string;
+  implementationClass?: string;
+  defaultState?: Record<string, string>;
+  defaultStateSourcePath?: string;
+  defaultStateMethod?: "registerDefaultState" | "stateDefinition.any";
   copiedFrom?: string;
   destroyTime?: number;
   explosionResistance?: number;
@@ -566,6 +571,7 @@ export interface BlockstateRenderDefinition {
   sourcePath: string;
   properties: Record<string, string[]>;
   defaultState?: Record<string, string>;
+  defaultStateProvenance?: RenderProvenance;
   variants: Record<string, BlockstateModelVariant[]>;
   multipart: BlockstateMultipartCase[];
   modelRefs: string[];
@@ -711,6 +717,23 @@ export interface RenderValidationReport {
   fixtureIds: string[];
   counts: Record<string, number>;
   issues: RenderValidationIssue[];
+}
+
+export interface DatasetValidationIssue {
+  code: string;
+  message: string;
+  collection: "recipes" | "items" | "blocks" | "tags";
+  id?: string;
+  sourcePath?: string;
+  severity: "error" | "warning";
+}
+
+export interface DatasetValidationReport {
+  version: string;
+  generatedAt: string;
+  status: "passed" | "failed";
+  counts: Record<string, number>;
+  issues: DatasetValidationIssue[];
 }
 
 export interface MinecraftRenderDataset {
@@ -1847,6 +1870,8 @@ export interface VersionDataset {
   renderData?: MinecraftRenderDataset;
   mobSoundMinecraftWiki?: MinecraftWikiMobSoundAlignment;
   resourcePack?: ResourcePackDefinition;
+  /** Cross-collection semantic completeness checks run during processing. */
+  datasetValidation?: DatasetValidationReport;
 }
 
 export interface CollectionChange<T> {

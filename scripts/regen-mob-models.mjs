@@ -2,7 +2,7 @@
 // Re-extract mob models into an already-processed dataset without running
 // the full pipeline (re-uses the dataset's existing mob list).
 // Usage: node scripts/regen-mob-models.mjs [version]
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeJsonFile } from "../dist/core/fs.js";
 import { createConsoleLogger } from "../dist/core/logger.js";
@@ -44,4 +44,10 @@ await writeJsonFile(join(datasetDir, "mob-models.json"), {
   generatedAt: existing.generatedAt,
   mobs,
 });
+const datasetPath = join(datasetDir, "dataset.json");
+if (existsSync(datasetPath)) {
+  const dataset = JSON.parse(readFileSync(datasetPath, "utf8"));
+  dataset.mobModels = mobs;
+  await writeJsonFile(datasetPath, dataset);
+}
 console.log(`Wrote ${mobs.length} mob models to ${join(datasetDir, "mob-models.json")}`);

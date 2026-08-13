@@ -7,6 +7,7 @@ import type { Logger } from "../core/logger.js";
 import type {
   AtlasRenderDefinition,
   BlockDefinition,
+  BlockPropertyDefinition,
   BlockRenderLayerKind,
   BlockstateModelVariant,
   BlockstateRenderDefinition,
@@ -100,6 +101,7 @@ export class RenderDataExtractor {
     options: {
       translations?: TranslationEntry[];
       blocks?: BlockDefinition[];
+      blockProperties?: BlockPropertyDefinition[];
       mobModels?: MobModelDefinition[];
       decompiledClientRoot?: string;
     } = {},
@@ -121,7 +123,8 @@ export class RenderDataExtractor {
       textureMap,
     );
 
-    const blockstates = await this.readBlockstates(paths, source);
+    const blockDefaultStates = new Map((options.blockProperties ?? []).map((entry) => [entry.id, entry]));
+    const blockstates = await this.readBlockstates(paths, source, blockDefaultStates);
     const itemDisplays = await this.readClientItems(paths, source, resolvedModelMap, translations);
     const tints = this.buildTints(blockstates, itemDisplays);
     const renderLayers = this.buildRenderLayers(blockstates, resolvedModelMap, textureMap);
@@ -294,7 +297,11 @@ export class RenderDataExtractor {
     };
   }
 
-  private async readBlockstates(paths: string[], source: ArchiveSource): Promise<BlockstateRenderDefinition[]> {
+  private async readBlockstates(
+    paths: string[],
+    source: ArchiveSource,
+    blockProperties: Map<string, BlockPropertyDefinition>,
+  ): Promise<BlockstateRenderDefinition[]> {
     const blockstatePaths = paths.filter((path) => path.startsWith(BLOCKSTATE_PREFIX) && path.endsWith(".json"));
     const blockstates: BlockstateRenderDefinition[] = [];
 
@@ -328,11 +335,41 @@ export class RenderDataExtractor {
         }
       }
 
+      const properties = inferBlockstateProperties(variants, multipart);
+      const sourceProperties = blockProperties.get(id);
+      const sourceDefaultState = sourceProperties?.defaultState;
+      if (sourceDefaultState) {
+        for (const [property, value] of Object.entries(sourceDefaultState)) {
+          properties[property] = Array.from(new Set([...(properties[property] ?? []), value])).sort();
+        }
+      }
+      const inferredDefaultState = inferDefaultState(variants);
+      const defaultState = sourceDefaultState
+        ? { ...(inferredDefaultState ?? firstPropertyValues(properties)), ...sourceDefaultState }
+        : inferredDefaultState;
+      const defaultStateProvenance: RenderProvenance | undefined = sourceDefaultState
+        ? {
+            kind: "client-source",
+            path: sourceProperties?.defaultStateSourcePath,
+            className: sourceProperties?.implementationClass,
+            method: sourceProperties?.defaultStateMethod ?? "registerDefaultState",
+          }
+        : defaultState
+          ? {
+              kind: "fallback",
+              path,
+              reason: sourceProperties
+                ? "No source-derived registered-block default was available; using the first asset variant."
+                : "This asset has no registered block mapping; using the first asset variant as a render-only default.",
+            }
+          : undefined;
+
       blockstates.push({
         id,
         sourcePath: path,
-        properties: inferBlockstateProperties(variants, multipart),
-        defaultState: inferDefaultState(variants),
+        properties,
+        defaultState,
+        defaultStateProvenance,
         variants,
         multipart,
         modelRefs: Array.from(modelRefs).sort(),
@@ -767,6 +804,12 @@ function inferDefaultState(variants: Record<string, BlockstateModelVariant[]>): 
   }
   const firstKey = Object.keys(variants).sort()[0];
   return firstKey ? Object.fromEntries(parseStateKey(firstKey)) : undefined;
+}
+
+function firstPropertyValues(properties: Record<string, string[]>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(properties).flatMap(([property, values]) => (values[0] === undefined ? [] : [[property, values[0]]])),
+  );
 }
 
 function parseStateKey(key: string): [string, string][] {

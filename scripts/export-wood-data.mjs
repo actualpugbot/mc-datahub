@@ -81,15 +81,19 @@ const woodTypes = familyDefinitions
 
 const relevantTagObjects = tags.filter((tag) => {
   const text = JSON.stringify(tag);
-  return familyDefinitions.some(({ family }) => text.includes(`${family}_`)) || /minecraft:(logs|planks|wooden_|saplings)/.test(text);
+  return (
+    familyDefinitions.some(({ family }) => text.includes(`${family}_`)) || /minecraft:(logs|planks|wooden_|saplings)/.test(text)
+  );
 });
 
 const output = {
   metadata: {
     currentVersion,
     lastCompleteTreeExtractionVersion: lastCompleteVersion,
-    scope: "Vanilla, family-specific wood blocks/items/recipes/tags and naturally generated biome locations stored by mc-datahub.",
-    locationMethod: "Biome placed-feature references were recursively resolved through current placed_feature, feature, and configured_feature JSON; a family is reported when its trunk/stem/bamboo block occurs in the resolved graph.",
+    scope:
+      "Vanilla, family-specific wood blocks/items/recipes/tags and naturally generated biome locations stored by mc-datahub.",
+    locationMethod:
+      "Biome placed-feature references were recursively resolved through current placed_feature, feature, and configured_feature JSON; a family is reported when its trunk/stem/bamboo block occurs in the resolved graph.",
     caveats: [
       "26.3-snapshot-6 tree-features extraction is incomplete after a worldgen schema change; its warnings are retained verbatim.",
       "Poplar exists in 26.3-snapshot-6 but not in the last complete 26.2 tree extraction, so its lastCompleteTreeData is null.",
@@ -126,7 +130,13 @@ function owner(id) {
 
 function displayNameFor(kind, id) {
   const path = id.replace(/^minecraft:/, "");
-  return names.get(`${kind}.minecraft.${path}`) ?? path.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+  return (
+    names.get(`${kind}.minecraft.${path}`) ??
+    path
+      .split("_")
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(" ")
+  );
 }
 
 function inferRole(id, family) {
@@ -154,12 +164,14 @@ function relevantCompleteFeatures(family) {
 async function deriveLocations(allBiomes) {
   const result = new Map(familyDefinitions.map(({ family }) => [family, []]));
   for (const biome of allBiomes) {
-    const roots = flatten(biome.raw?.features ?? []).filter((value) => typeof value === "string" && value.startsWith("minecraft:"));
+    const roots = flatten(biome.raw?.features ?? []).filter(
+      (value) => typeof value === "string" && value.startsWith("minecraft:"),
+    );
     const evidence = new Map(familyDefinitions.map(({ family }) => [family, []]));
     for (const rootFeature of roots) {
       const graphText = await resolveGraph(rootFeature);
       for (const { family, marker } of familyDefinitions) {
-        if (graphText.includes(`\"${marker}\"`)) evidence.get(family).push(rootFeature);
+        if (graphText.includes(`"${marker}"`)) evidence.get(family).push(rootFeature);
       }
     }
     for (const { family } of familyDefinitions) {
@@ -211,7 +223,9 @@ async function loadWorldgen(id) {
     try {
       await access(path);
       matches.push(await json(path));
-    } catch {}
+    } catch {
+      continue;
+    }
   }
   return matches;
 }
@@ -224,7 +238,10 @@ function strings(value, output = []) {
 }
 
 function flatten(value, output = []) {
-  for (const item of value) Array.isArray(item) ? flatten(item, output) : output.push(item);
+  for (const item of value) {
+    if (Array.isArray(item)) flatten(item, output);
+    else output.push(item);
+  }
   return output;
 }
 

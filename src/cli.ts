@@ -63,6 +63,7 @@ import { dumpBanners } from "./orchestrators/dumpBanners.js";
 import { buildMobAudioDumpPayload, dumpMobAudioFiles } from "./orchestrators/dumpMobAudio.js";
 import { buildRecipeDumpPayload } from "./orchestrators/dumpRecipes.js";
 import { validateRenderDataset } from "./validation/renderValidation.js";
+import { validateDataset } from "./validation/datasetValidation.js";
 
 function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -447,7 +448,18 @@ async function main(): Promise<void> {
       const directory = options.output
         ? resolve(process.cwd(), options.output)
         : datasetVersionDir(context.config.workspace, version);
-      await Promise.all(structureFileWrites(directory, version, new Date().toISOString(), bundle));
+      const datasetPath = join(directory, "dataset.json");
+      const existingDataset =
+        !options.output && (await fileExists(datasetPath)) ? await readJsonFile<VersionDataset>(datasetPath) : undefined;
+      const generatedAt = existingDataset?.generatedAt ?? new Date().toISOString();
+      await Promise.all(structureFileWrites(directory, version, generatedAt, bundle));
+      if (existingDataset) {
+        existingDataset.structures = bundle.structures;
+        existingDataset.templatePools = bundle.templatePools;
+        existingDataset.processorLists = bundle.processorLists;
+        existingDataset.structureTemplates = bundle.structureTemplates;
+        await writeJsonFile(datasetPath, existingDataset);
+      }
       console.log(
         JSON.stringify(
           {
@@ -526,6 +538,25 @@ async function main(): Promise<void> {
     });
 
   const validateCommand = program.command("validate").description("Validate processed datasets.");
+  validateCommand
+    .command("dataset")
+    .argument("<version>", "Minecraft version id with a processed dataset")
+    .option("--output <path>", "Write validation report JSON to a file")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const report = validateDataset(await context.datasetStore.loadDataset(version));
+      if (options.output) {
+        const outputPath = resolve(process.cwd(), options.output);
+        await writeJsonFile(outputPath, report);
+        console.log(JSON.stringify({ version, status: report.status, errorCount: report.counts.errors, outputPath }, null, 2));
+      } else {
+        console.log(JSON.stringify(report, null, 2));
+      }
+      if (report.status === "failed") {
+        process.exitCode = 1;
+      }
+    });
+
   validateCommand
     .command("render")
     .argument("<version>", "Minecraft version id with processed render data")

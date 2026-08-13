@@ -3,7 +3,7 @@
 // without re-running the full extraction pipeline.
 // Usage: node scripts/regen-block-entity-models.mjs [version]
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { MobModelExtractor } from "../dist/extraction/mobModelExtractor.js";
 import { writeJsonFile } from "../dist/core/fs.js";
 import { createConsoleLogger } from "../dist/core/logger.js";
@@ -21,10 +21,16 @@ for (const entry of blockEntities) {
   console.log(`${entry.id} -> ${layers}`);
 }
 
-const generatedAt = JSON.parse(readFileSync(join(datasetDir, "mob-models.json"), "utf8")).generatedAt;
+const datasetPath = join(datasetDir, "dataset.json");
+const dataset = existsSync(datasetPath) ? JSON.parse(readFileSync(datasetPath, "utf8")) : undefined;
+const generatedAt = dataset?.generatedAt ?? JSON.parse(readFileSync(join(datasetDir, "mob-models.json"), "utf8")).generatedAt;
 await writeJsonFile(join(datasetDir, "block-entity-models.json"), {
   version,
   generatedAt,
   blockEntities,
 });
+if (dataset) {
+  dataset.blockEntityModels = blockEntities;
+  await writeJsonFile(datasetPath, dataset);
+}
 console.log(`Wrote ${blockEntities.length} block-entity models to ${join(datasetDir, "block-entity-models.json")}`);

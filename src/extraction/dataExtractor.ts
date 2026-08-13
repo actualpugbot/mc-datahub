@@ -41,8 +41,8 @@ const MODEL_PREFIX = "assets/minecraft/models/";
 const CLIENT_ITEM_PREFIX = "assets/minecraft/items/";
 const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const RECIPE_PREFIXES = ["data/minecraft/recipe/", "data/minecraft/recipes/"] as const;
-const BLOCK_TAG_PREFIX = "data/minecraft/tags/blocks/";
-const ITEM_TAG_PREFIX = "data/minecraft/tags/items/";
+const BLOCK_TAG_PREFIXES = ["data/minecraft/tags/block/", "data/minecraft/tags/blocks/"] as const;
+const ITEM_TAG_PREFIXES = ["data/minecraft/tags/item/", "data/minecraft/tags/items/"] as const;
 const TAGS_PREFIX = "data/minecraft/tags/";
 const ENCHANTMENT_PREFIXES = ["data/minecraft/enchantment/", "data/minecraft/enchantments/"] as const;
 const LOOT_TABLE_PREFIXES = ["data/minecraft/loot_table/", "data/minecraft/loot_tables/"] as const;
@@ -60,8 +60,8 @@ export class MinecraftDataExtractor {
     const textures = this.readTextures(paths);
     const palettes = await buildPalettes(paths, source);
     const recipes = await this.readRecipes(paths, source);
-    const blockTags = await this.readTags(paths, source, BLOCK_TAG_PREFIX);
-    const itemTags = await this.readTags(paths, source, ITEM_TAG_PREFIX);
+    const blockTags = await this.readTags(paths, source, BLOCK_TAG_PREFIXES);
+    const itemTags = await this.readTags(paths, source, ITEM_TAG_PREFIXES);
     const blocks = await this.readBlocks(paths, source, models, blockTags);
     const items = await this.readItems(paths, source, models, itemTags, recipes);
     const tags = await this.readTagDefinitions(paths, source);
@@ -165,8 +165,9 @@ export class MinecraftDataExtractor {
     return recipes.sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  private async readTags(paths: string[], source: ArchiveSource, prefix: string): Promise<Map<string, string[]>> {
-    const tagPaths = paths.filter((path) => path.startsWith(prefix) && path.endsWith(".json"));
+  private async readTags(paths: string[], source: ArchiveSource, prefixes: readonly string[]): Promise<Map<string, string[]>> {
+    const tagPaths = paths.filter((path) => prefixes.some((prefix) => path.startsWith(prefix)) && path.endsWith(".json"));
+    const tagDefinitions = new Map<string, string[]>();
     const tagMap = new Map<string, string[]>();
 
     for (const path of tagPaths) {
@@ -176,17 +177,59 @@ export class MinecraftDataExtractor {
           continue;
         }
 
-        const tagId = idFromAssetPath(prefix, path);
-        for (const value of raw.values) {
-          if (typeof value === "string" && !value.startsWith("#")) {
-            const normalized = normalizeMinecraftId(value);
-            const existing = tagMap.get(normalized) ?? [];
-            existing.push(tagId);
-            tagMap.set(normalized, existing);
-          }
+        const prefix = prefixes.find((candidate) => path.startsWith(candidate));
+        if (!prefix) {
+          continue;
         }
+
+        const tagId = idFromAssetPath(prefix, path);
+        const values = raw.values.map(normalizeTagEntry).filter((value): value is string => value !== undefined);
+        const existing = raw.replace === true ? [] : (tagDefinitions.get(tagId) ?? []);
+        tagDefinitions.set(tagId, Array.from(new Set([...existing, ...values])));
       } catch (error) {
         this.logger.warn(`Skipping malformed tag file ${path}: ${(error as Error).message}`);
+      }
+    }
+
+    const resolvedTags = new Map<string, Set<string>>();
+    const warnedCycles = new Set<string>();
+    const resolveTag = (tagId: string, visiting: Set<string>): Set<string> => {
+      const cached = resolvedTags.get(tagId);
+      if (cached) {
+        return cached;
+      }
+
+      if (visiting.has(tagId)) {
+        if (!warnedCycles.has(tagId)) {
+          this.logger.warn(`Skipping cyclic tag reference involving ${tagId}.`);
+          warnedCycles.add(tagId);
+        }
+        return new Set();
+      }
+
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(tagId);
+      const members = new Set<string>();
+      for (const value of tagDefinitions.get(tagId) ?? []) {
+        if (value.startsWith("#")) {
+          const nestedTagId = normalizeMinecraftId(value.slice(1));
+          for (const nestedMember of resolveTag(nestedTagId, nextVisiting)) {
+            members.add(nestedMember);
+          }
+        } else {
+          members.add(normalizeMinecraftId(value));
+        }
+      }
+
+      resolvedTags.set(tagId, members);
+      return members;
+    };
+
+    for (const tagId of tagDefinitions.keys()) {
+      for (const normalized of resolveTag(tagId, new Set())) {
+        const existing = tagMap.get(normalized) ?? [];
+        existing.push(tagId);
+        tagMap.set(normalized, existing);
       }
     }
 

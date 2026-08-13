@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileExists } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
@@ -218,6 +218,7 @@ export class DecompiledSourceExtractor {
     const methods = parseMethods(blocksSource);
     const registrationHelpers = new Map<string, RegistrationHelper>();
     const propertyHelpers = new Map<string, RegistrationHelper>();
+    const implementationHelpers = new Map<string, string>();
 
     for (const method of methods) {
       const registrationProperties = extractRegisterProperties(method.body);
@@ -229,15 +230,27 @@ export class DecompiledSourceExtractor {
       if (propertyReturn) {
         propertyHelpers.set(method.name, { expression: propertyReturn, params: method.params });
       }
+
+      const implementationClass = findBlockImplementationClass(method.body);
+      if (implementationClass) {
+        implementationHelpers.set(method.name, implementationClass);
+      }
     }
 
     const properties = new Map<string, BlockPropertyDefinition>();
     for (const declaration of parseStaticDeclarations(blocksSource, "Block")) {
-      const definition = toBlockPropertyDefinition(declaration, BLOCKS_PATH, registrationHelpers, propertyHelpers, context);
+      const definition = toBlockPropertyDefinition(
+        declaration,
+        BLOCKS_PATH,
+        registrationHelpers,
+        propertyHelpers,
+        implementationHelpers,
+        context,
+      );
       properties.set(definition.id, definition);
     }
 
-    for (const definition of expandBlockCollections(blocksSource, propertyHelpers, context)) {
+    for (const definition of expandBlockCollections(blocksSource, propertyHelpers, implementationHelpers, context)) {
       // Single declarations win over collection expansions if they ever collide.
       if (!properties.has(definition.id)) {
         properties.set(definition.id, definition);
@@ -247,6 +260,7 @@ export class DecompiledSourceExtractor {
     // Blocks declared via ofFullCopy/ofLegacyCopy inherit the source block's physical
     // properties; fill those in once every block (incl. copy sources) has been parsed.
     resolveCopyInheritance(properties);
+    await attachBlockDefaultStates(clientRoot, properties);
 
     return Array.from(properties.values()).sort((left, right) => left.id.localeCompare(right.id));
   }
@@ -335,6 +349,7 @@ function toBlockPropertyDefinition(
   sourcePath: string,
   registrationHelpers: Map<string, RegistrationHelper>,
   propertyHelpers: Map<string, RegistrationHelper>,
+  implementationHelpers: Map<string, string>,
   context: SourceContext,
 ): BlockPropertyDefinition {
   const outerCall = parseTopLevelCall(declaration.expression);
@@ -348,7 +363,13 @@ function toBlockPropertyDefinition(
     ? expandBlockPropertiesExpression(collapseWhitespace(basePropertiesExpression), propertyHelpers)
     : "";
 
-  return buildBlockProperty(id, declaration.symbol, sourcePath, normalizedProperties);
+  return buildBlockProperty(
+    id,
+    declaration.symbol,
+    sourcePath,
+    normalizedProperties,
+    resolveBlockImplementationClass(declaration.expression, implementationHelpers),
+  );
 }
 
 function buildBlockProperty(
@@ -356,6 +377,7 @@ function buildBlockProperty(
   sourceSymbol: string,
   sourcePath: string,
   normalizedProperties: string,
+  implementationClass?: string,
 ): BlockPropertyDefinition {
   const strengthValues = findLastCallArguments(normalizedProperties, "strength");
   const destroyTimeFromStrength = strengthValues ? parseJavaNumber(strengthValues[0]) : undefined;
@@ -367,6 +389,7 @@ function buildBlockProperty(
     id,
     sourcePath,
     sourceSymbol,
+    implementationClass,
     copiedFrom,
     destroyTime:
       parseLastNumericCall(normalizedProperties, "destroyTime") ??
@@ -433,6 +456,423 @@ function inheritBlockProperties(target: BlockPropertyDefinition, source: BlockPr
   target.randomTicks ||= source.randomTicks;
   target.noCollision ||= source.noCollision;
   target.replaceable ||= source.replaceable;
+}
+
+interface BlockClassDefaultState {
+  className: string;
+  parentClass?: string;
+  stateDefinitionValues: Record<string, string>;
+  values: Record<string, string>;
+  registersDefaultState: boolean;
+  resetsInheritedDefaults: boolean;
+  sourcePath: string;
+}
+
+interface StatePropertyDefault {
+  name: string;
+  value: string;
+}
+
+function resolveBlockImplementationClass(expression: string, helpers: Map<string, string>): string | undefined {
+  const direct = findBlockImplementationClass(expression);
+  if (direct) return direct;
+
+  const topLevelHelper = helpers.get(parseTopLevelCall(expression)?.name.split(".").at(-1) ?? "");
+  if (topLevelHelper) return topLevelHelper;
+
+  // Collection factories put the actual block registration inside a lambda, for
+  // example `(color, id) -> registerStair(id, WOOL.pick(color))`. Find helper calls
+  // anywhere in the expression so these blocks retain their implementation class.
+  for (const [helper, implementationClass] of Array.from(helpers.entries()).sort(
+    ([left], [right]) => right.length - left.length,
+  )) {
+    if (new RegExp(`\\b${escapeRegExp(helper)}\\s*\\(`).test(expression)) {
+      return implementationClass;
+    }
+  }
+
+  return undefined;
+}
+
+function findBlockImplementationClass(expression: string): string | undefined {
+  const constructorReference = expression.match(/\b([A-Z][A-Za-z0-9_]*)::new\b/);
+  if (constructorReference?.[1]) {
+    return constructorReference[1];
+  }
+
+  const constructorCall = expression.match(/\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(/);
+  if (constructorCall?.[1]) {
+    return constructorCall[1];
+  }
+
+  const call = parseTopLevelCall(expression);
+  const callName = call?.name.split(".").at(-1);
+  if (callName === "register" && call?.args.length === 2) {
+    return "Block";
+  }
+
+  return undefined;
+}
+
+async function attachBlockDefaultStates(clientRoot: string, properties: Map<string, BlockPropertyDefinition>): Promise<void> {
+  const blockSourceRoot = join(clientRoot, "net/minecraft/world/level/block");
+  if (!(await fileExists(blockSourceRoot))) {
+    return;
+  }
+
+  const sources: Array<{ path: string; source: string }> = [];
+  for (const path of await listJavaFiles(blockSourceRoot)) {
+    sources.push({ path, source: await readFile(path, "utf8") });
+  }
+  const enumSerializedValues = parseEnumSerializedValues(sources.map((entry) => entry.source));
+  const statePropertyDefaults = parseStatePropertyDefaults(
+    sources.map((entry) => entry.source),
+    enumSerializedValues,
+  );
+  const classDefaults = new Map<string, BlockClassDefaultState>();
+  for (const { path, source } of sources) {
+    const parsed = parseBlockClassDefaultState(
+      source,
+      relativeSourcePath(clientRoot, path),
+      statePropertyDefaults,
+      enumSerializedValues,
+    );
+    if (parsed) {
+      classDefaults.set(parsed.className, parsed);
+    }
+  }
+
+  interface ResolvedClassDefault {
+    stateDefinitionValues: Record<string, string>;
+    values: Record<string, string>;
+    sourcePath?: string;
+    method?: BlockPropertyDefinition["defaultStateMethod"];
+  }
+  const resolved = new Map<string, ResolvedClassDefault>();
+  const resolve = (className: string, visiting = new Set<string>()): ResolvedClassDefault => {
+    const cached = resolved.get(className);
+    if (cached) return cached;
+    if (visiting.has(className)) return { stateDefinitionValues: {}, values: {} };
+
+    const entry = classDefaults.get(className);
+    if (!entry) return { stateDefinitionValues: {}, values: {} };
+    const nextVisiting = new Set(visiting);
+    nextVisiting.add(className);
+    const inherited = entry.parentClass ? resolve(entry.parentClass, nextVisiting) : { stateDefinitionValues: {}, values: {} };
+    const stateDefinitionValues = { ...inherited.stateDefinitionValues, ...entry.stateDefinitionValues };
+    const baseValues = entry.resetsInheritedDefaults ? stateDefinitionValues : { ...stateDefinitionValues, ...inherited.values };
+    const hasLocalStateDefinitionValues = Object.keys(entry.stateDefinitionValues).length > 0;
+    const localStateDefinitionContributes = Object.entries(entry.stateDefinitionValues).some(
+      ([property, value]) => inherited.values[property] !== value,
+    );
+    const useLocalSource = entry.registersDefaultState || (hasLocalStateDefinitionValues && localStateDefinitionContributes);
+    const result = {
+      stateDefinitionValues,
+      values: { ...baseValues, ...entry.values },
+      sourcePath: useLocalSource ? entry.sourcePath : inherited.sourcePath,
+      method: entry.registersDefaultState
+        ? ("registerDefaultState" as const)
+        : hasLocalStateDefinitionValues && localStateDefinitionContributes
+          ? ("stateDefinition.any" as const)
+          : inherited.method,
+    };
+    resolved.set(className, result);
+    return result;
+  };
+
+  for (const definition of properties.values()) {
+    if (!definition.implementationClass) continue;
+    const defaultState = resolve(definition.implementationClass);
+    if (!defaultState.method) continue;
+    definition.defaultState = defaultState.values;
+    definition.defaultStateSourcePath = defaultState.sourcePath;
+    definition.defaultStateMethod = defaultState.method;
+  }
+}
+
+async function listJavaFiles(root: string): Promise<string[]> {
+  const paths: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) paths.push(...(await listJavaFiles(path)));
+    else if (entry.isFile() && entry.name.endsWith(".java")) paths.push(path);
+  }
+  return paths.sort();
+}
+
+function parseEnumSerializedValues(sources: string[]): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const source of sources) {
+    for (const match of source.matchAll(/\benum\s+([A-Z][A-Za-z0-9_]*)[^{]*\{/g)) {
+      const enumClass = match[1];
+      const bodyStart = (match.index ?? 0) + match[0].length;
+      const constantsEnd = findStatementEnd(source, bodyStart);
+      if (!enumClass || constantsEnd < 0) continue;
+      for (const constantExpression of splitTopLevelArgs(source.slice(bodyStart, constantsEnd))) {
+        const constant = collapseWhitespace(constantExpression).match(/^([A-Z][A-Z0-9_]*)(?:\((.*)\))?$/);
+        const name = constant?.[1];
+        if (!name) continue;
+        const serializedName = constant?.[2]?.match(/"([^"]+)"/)?.[1] ?? name.toLowerCase();
+        values.set(`${enumClass}.${name}`, serializedName);
+      }
+    }
+  }
+  return values;
+}
+
+function parseStatePropertyDefaults(
+  sources: string[],
+  enumSerializedValues: Map<string, string>,
+): Map<string, StatePropertyDefault> {
+  const enumFirstValues = new Map<string, string>([
+    ["Direction", "down"],
+    ["Axis", "x"],
+  ]);
+  for (const [key, value] of enumSerializedValues) {
+    const enumClass = key.split(".")[0];
+    if (enumClass && !enumFirstValues.has(enumClass)) enumFirstValues.set(enumClass, value);
+  }
+
+  const declarations: Array<{ owner: string; symbol: string; expression: string }> = [];
+  const parentClasses = new Map<string, string>();
+  const propertyPattern =
+    /(?:public|protected|private)\s+static\s+final\s+(?:BooleanProperty|IntegerProperty|EnumProperty(?:<[^;=]+>)?)\s+([A-Z][A-Z0-9_]*)\s*=\s*/g;
+  for (const source of sources) {
+    const owner = source.match(/\b(?:class|interface)\s+([A-Z][A-Za-z0-9_]*)/)?.[1];
+    if (!owner) continue;
+    const parent = source.match(
+      new RegExp(`\\bclass\\s+${escapeRegExp(owner)}(?:<[^>{}]+>)?\\s+extends\\s+([A-Z][A-Za-z0-9_]*)`),
+    )?.[1];
+    if (parent) parentClasses.set(owner, parent);
+    for (const match of source.matchAll(propertyPattern)) {
+      const symbol = match[1];
+      const start = (match.index ?? 0) + match[0].length;
+      const end = findStatementEnd(source, start);
+      if (symbol && end >= 0) {
+        declarations.push({ owner, symbol, expression: collapseWhitespace(source.slice(start, end)) });
+      }
+    }
+  }
+
+  const defaults = new Map<string, StatePropertyDefault>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of declarations) {
+      const key = `${declaration.owner}.${declaration.symbol}`;
+      if (defaults.has(key)) continue;
+      const descriptor = parseStatePropertyDefaultExpression(declaration.expression, defaults, enumFirstValues);
+      if (descriptor) {
+        defaults.set(key, descriptor);
+        changed = true;
+      }
+    }
+  }
+
+  // Java static property fields are inherited, so a subclass can use `FACING` in its
+  // state definition without redeclaring it (LoomBlock and glazed terracotta do this).
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (const [child, parent] of parentClasses) {
+      for (const [key, descriptor] of Array.from(defaults)) {
+        if (!key.startsWith(`${parent}.`)) continue;
+        const symbol = key.slice(parent.length + 1);
+        const childKey = `${child}.${symbol}`;
+        if (!defaults.has(childKey)) {
+          defaults.set(childKey, descriptor);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return defaults;
+}
+
+function parseStatePropertyDefaultExpression(
+  expression: string,
+  defaults: Map<string, StatePropertyDefault>,
+  enumFirstValues: Map<string, string>,
+): StatePropertyDefault | undefined {
+  const boolean = expression.match(/\bBooleanProperty\.create\(\s*"([^"]+)"/);
+  if (boolean?.[1]) return { name: boolean[1], value: "true" };
+
+  const integer = expression.match(/\bIntegerProperty\.create\(\s*"([^"]+)"\s*,\s*(-?\d+)/);
+  if (integer?.[1] && integer[2] !== undefined) return { name: integer[1], value: integer[2] };
+
+  const enumCall = parseTopLevelCall(expression);
+  if (enumCall?.name === "EnumProperty.create") {
+    const name = enumCall.args[0]?.match(/^"([^"]+)"$/)?.[1];
+    const enumClass = enumCall.args[1]?.match(/(?:[A-Z][A-Za-z0-9_]*\.)*([A-Z][A-Za-z0-9_]*)\.class/)?.[1];
+    if (!name || !enumClass) return undefined;
+
+    const restriction = enumCall.args.slice(2).join(", ");
+    let value: string | undefined;
+    if (restriction.includes("Direction.Plane.HORIZONTAL")) {
+      value = "north";
+    } else if (restriction && !restriction.includes("->")) {
+      value = restriction.match(new RegExp(`(?:\\b${escapeRegExp(enumClass)}\\.)?([A-Z][A-Z0-9_]*)\\b`))?.[1]?.toLowerCase();
+    }
+    value ??= enumFirstValues.get(enumClass);
+    return value ? { name, value } : undefined;
+  }
+
+  const alias = expression.match(/\b([A-Z][A-Za-z0-9_]*)\.([A-Z][A-Z0-9_]*)\s*$/);
+  return alias?.[1] && alias[2] ? defaults.get(`${alias[1]}.${alias[2]}`) : undefined;
+}
+
+function parseClassStateDefinitionValues(
+  source: string,
+  className: string,
+  defaults: Map<string, StatePropertyDefault>,
+): Record<string, string> {
+  const methodMatch = source.match(/\bcreateBlockStateDefinition\s*\([^)]*\)\s*\{/);
+  const openIndex = methodMatch?.index !== undefined ? source.indexOf("{", methodMatch.index) : -1;
+  const closeIndex = openIndex >= 0 ? findMatchingBrace(source, openIndex) : -1;
+  if (openIndex < 0 || closeIndex < 0) return {};
+
+  const values: Record<string, string> = {};
+  const body = source.slice(openIndex + 1, closeIndex);
+  for (const args of findCallArguments(body, "add")) {
+    for (const argument of args) {
+      const normalized = collapseWhitespace(argument);
+      const qualified = normalized.match(/\b([A-Z][A-Za-z0-9_]*)\.([A-Z][A-Z0-9_]*)\s*$/);
+      const bare = normalized.match(/^([A-Z][A-Z0-9_]*)$/)?.[1];
+      const descriptor =
+        qualified?.[1] && qualified[2]
+          ? defaults.get(`${qualified[1]}.${qualified[2]}`)
+          : bare
+            ? defaults.get(`${className}.${bare}`)
+            : undefined;
+      if (descriptor) values[descriptor.name] = descriptor.value;
+    }
+  }
+  return values;
+}
+
+function relativeSourcePath(clientRoot: string, path: string): string {
+  return path.slice(clientRoot.length + 1).replace(/\\/g, "/");
+}
+
+function parseBlockClassDefaultState(
+  source: string,
+  sourcePath: string,
+  statePropertyDefaults: Map<string, StatePropertyDefault>,
+  enumSerializedValues: Map<string, string>,
+): BlockClassDefaultState | undefined {
+  const classMatch = source.match(/\bclass\s+([A-Z][A-Za-z0-9_]*)(?:<[^>{}]+>)?(?:\s+extends\s+([A-Z][A-Za-z0-9_]*))?/);
+  const className = classMatch?.[1];
+  if (!className) return undefined;
+
+  const stateDefinitionValues = parseClassStateDefinitionValues(source, className, statePropertyDefaults);
+  const markerIndex = source.indexOf("registerDefaultState");
+  if (markerIndex < 0) {
+    return {
+      className,
+      parentClass: classMatch?.[2],
+      stateDefinitionValues,
+      values: {},
+      registersDefaultState: false,
+      resetsInheritedDefaults: false,
+      sourcePath,
+    };
+  }
+
+  const openIndex = source.indexOf("(", markerIndex);
+  const closeIndex = openIndex >= 0 ? findMatchingParen(source, openIndex) : -1;
+  if (openIndex < 0 || closeIndex < 0) return undefined;
+  const expression = source.slice(openIndex + 1, closeIndex);
+  const values: Record<string, string> = {};
+  let valueSource = expression;
+  const constructorBody = findContainingConstructorBody(source, className, markerIndex);
+  if (constructorBody) valueSource += ` ${constructorBody}`;
+
+  for (const args of findCallArguments(valueSource, "setValue")) {
+    const property = normalizeDefaultStateProperty(args[0]);
+    const value = normalizeDefaultStateValue(args[1], enumSerializedValues);
+    if (property && value !== undefined) values[property] = value;
+  }
+
+  // ChiseledBookShelfBlock initializes a local state in a loop over a static
+  // `List.of(SLOT_0_OCCUPIED, ...)`, then registers that local variable.
+  for (const loop of valueSource.matchAll(/for\s*\(\s*BooleanProperty\s+(\w+)\s*:\s*([A-Z][A-Z0-9_]*)\s*\)/g)) {
+    const variable = loop[1];
+    const collection = loop[2];
+    if (!variable || !collection) continue;
+    const loopValueMatch = valueSource.match(new RegExp(`setValue\\(\\s*${escapeRegExp(variable)}\\s*,\\s*([^)]*)\\)`));
+    const loopValue = normalizeDefaultStateValue(loopValueMatch?.[1], enumSerializedValues);
+    if (loopValue === undefined) continue;
+    const collectionMatch = source.match(new RegExp(`${escapeRegExp(collection)}\\s*=\\s*List\\.of\\(([^;]+)\\)`, "s"));
+    for (const propertyExpression of splitTopLevelArgs(collectionMatch?.[1] ?? "")) {
+      const property = normalizeDefaultStateProperty(propertyExpression);
+      if (property) values[property] = loopValue;
+    }
+  }
+
+  // MultifaceBlock builds its default through a helper: waterlogging and every
+  // supported directional face are false. Its concrete subclasses inherit this.
+  if (expression.includes("getDefaultMultifaceState")) {
+    values.waterlogged = "false";
+    for (const direction of ["down", "up", "north", "south", "west", "east"]) {
+      values[direction] = "false";
+    }
+  }
+
+  return {
+    className,
+    parentClass: classMatch?.[2],
+    stateDefinitionValues,
+    values,
+    registersDefaultState: true,
+    resetsInheritedDefaults: expression.includes("stateDefinition.any()"),
+    sourcePath,
+  };
+}
+
+function findContainingConstructorBody(source: string, className: string, markerIndex: number): string | undefined {
+  const pattern = new RegExp(`(?:public|protected|private)\\s+${escapeRegExp(className)}\\s*\\([^)]*\\)\\s*\\{`, "g");
+  for (const match of source.matchAll(pattern)) {
+    const openIndex = source.indexOf("{", match.index ?? 0);
+    const closeIndex = openIndex >= 0 ? findMatchingBrace(source, openIndex) : -1;
+    if (openIndex >= 0 && closeIndex >= markerIndex) {
+      return source.slice(openIndex + 1, closeIndex);
+    }
+  }
+  return undefined;
+}
+
+function normalizeDefaultStateProperty(expression: string | undefined): string | undefined {
+  const normalized = collapseWhitespace(expression ?? "");
+  if (/\bgetAgeProperty\(\)\s*$/.test(normalized)) return "age";
+
+  const indexed = normalized.match(/([A-Z][A-Z0-9_]*)\s*\[\s*(\d+)\s*\]\s*$/);
+  if (indexed?.[1] && indexed[2] !== undefined) {
+    return `${indexed[1].toLowerCase().replace(/_wall$/, "")}_${indexed[2]}`;
+  }
+
+  const constant = normalized.match(/([A-Z][A-Z0-9_]*)\s*$/)?.[1]?.toLowerCase();
+  if (!constant) return undefined;
+  return constant.replace(/_wall$/, "");
+}
+
+function normalizeDefaultStateValue(
+  expression: string | undefined,
+  enumSerializedValues: Map<string, string>,
+): string | undefined {
+  let value = collapseWhitespace(expression ?? "").replace(/^\([A-Za-z0-9_$.<>? ]+\)\s*/, "");
+  const boxed = value.match(/^(?:Boolean|Integer|Long|Float|Double)\.valueOf\((.+)\)$/);
+  if (boxed?.[1]) value = boxed[1].trim();
+  if (/^(?:true|false)$/.test(value)) return value;
+  const number = value.match(/^-?(\d+(?:\.\d+)?)(?:[fFdDlL])?$/);
+  if (number?.[1]) return value.startsWith("-") ? `-${number[1]}` : number[1];
+  const string = value.match(/^"([^"]+)"$/);
+  if (string?.[1]) return string[1];
+  const enumConstant = value.match(/(?:^|\.)([A-Z][A-Za-z0-9_]*)\.([A-Z][A-Z0-9_]*)$/);
+  if (enumConstant?.[1] && enumConstant[2]) {
+    return enumSerializedValues.get(`${enumConstant[1]}.${enumConstant[2]}`) ?? enumConstant[2].toLowerCase();
+  }
+  return value.match(/(?:^|\.)([A-Z][A-Z0-9_]*)$/)?.[1]?.toLowerCase();
 }
 
 // --- 26.2 reference-id and collection support -------------------------------
@@ -614,6 +1054,7 @@ function copperIdExpand(byState: string[]): string[] {
 function expandBlockCollections(
   blocksSource: string,
   propertyHelpers: Map<string, RegistrationHelper>,
+  implementationHelpers: Map<string, string>,
   context: SourceContext,
 ): BlockPropertyDefinition[] {
   const declarations = [
@@ -625,19 +1066,27 @@ function expandBlockCollections(
   // families copy their properties from another collection (e.g. cut_copper from
   // copper_block) via `ofFullCopy(COPPER_BLOCK.weathering().pick(state))`, so the second
   // pass needs every collection's ids available regardless of declaration order.
-  const collections = new Map<string, { call: ParsedCall; ids: string[]; isColor: boolean }>();
+  const collections = new Map<string, { call: ParsedCall; ids: string[]; isColor: boolean; implementationClass?: string }>();
   for (const declaration of declarations) {
     const call = parseTopLevelCall(declaration.expression);
-    if (!call || !call.name.endsWith(".registerBlocks")) {
+    const method = call?.name.split(".").at(-1);
+    if (!call || (method !== "registerBlocks" && method !== "zipMap")) {
       continue;
     }
 
-    const ids = resolveReferenceCollectionIds(call.args[0], context.references);
+    // registerBlocks(ids, ...) takes the id collection first; zipMap(values, ids, ...)
+    // takes it second.
+    const ids = resolveReferenceCollectionIds(call.args[method === "zipMap" ? 1 : 0], context.references);
     if (!ids || ids.length === 0) {
       continue;
     }
 
-    collections.set(declaration.symbol, { call, ids, isColor: call.name.startsWith("ColorCollection") });
+    collections.set(declaration.symbol, {
+      call,
+      ids,
+      isColor: call.name.startsWith("ColorCollection"),
+      implementationClass: resolveBlockImplementationClass(declaration.expression, implementationHelpers),
+    });
   }
 
   const collectionIdsBySymbol = new Map(Array.from(collections, ([symbol, entry]) => [symbol, entry.ids]));
@@ -648,7 +1097,7 @@ function expandBlockCollections(
   const copperMapColorsBySymbol = computeCopperMapColors(collections);
   const definitions: BlockPropertyDefinition[] = [];
 
-  for (const { call, ids, isColor } of collections.values()) {
+  for (const { call, ids, isColor, implementationClass } of collections.values()) {
     const propertiesLambda = call.args.at(-1);
     if (!propertiesLambda) {
       continue;
@@ -660,7 +1109,13 @@ function expandBlockCollections(
         ? substituteDyeColor(lambdaBody, context.dyeColors[index])
         : substituteWeatherState(lambdaBody, index % WEATHER_STATES.length, copperMapColorsBySymbol);
       const normalizedProperties = expandBlockPropertiesExpression(collapseWhitespace(propertiesExpression), propertyHelpers);
-      const definition = buildBlockProperty(normalizeMinecraftId(id), symbolFromId(id), BLOCKS_PATH, normalizedProperties);
+      const definition = buildBlockProperty(
+        normalizeMinecraftId(id),
+        symbolFromId(id),
+        BLOCKS_PATH,
+        normalizedProperties,
+        implementationClass,
+      );
       if (!definition.copiedFrom) {
         definition.copiedFrom = resolveCollectionCopiedFrom(lambdaBody, index, collectionIdsBySymbol);
       }
@@ -782,6 +1237,12 @@ function resolveCollectionCopiedFrom(
   variantIndex: number,
   collectionIdsBySymbol: Map<string, string[]>,
 ): string | undefined {
+  const colorMatch = lambdaBody.match(/\b([A-Z0-9_]+)\.pick\(\s*color\s*\)/);
+  if (colorMatch?.[1]) {
+    const picked = collectionIdsBySymbol.get(colorMatch[1])?.[variantIndex];
+    return picked ? normalizeMinecraftId(picked) : undefined;
+  }
+
   const match = lambdaBody.match(/of(?:Full|Legacy)Copy\(\s*([A-Z0-9_]+)\.(weathering|waxed)\(\)\.pick\(/);
   if (!match?.[1]) {
     return undefined;

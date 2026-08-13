@@ -245,6 +245,79 @@ public class Blocks {
     });
   });
 
+  test("maps block registrations to implementation classes and source-derived default states", async () => {
+    const root = await createTempClientRoot();
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/Blocks.java",
+      `package net.minecraft.world.level.block;
+
+public class Blocks {
+   public static final Block OAK_STAIRS = registerLegacyStair("oak_stairs", OAK_PLANKS);
+   public static final Block CHEST = register("chest", ChestBlock::new, BlockBehaviour.Properties.of());
+
+   private static Block registerLegacyStair(final String id, final Block base) {
+      return register(id, p -> new StairBlock(base.defaultBlockState(), p), BlockBehaviour.Properties.ofLegacyCopy(base));
+   }
+
+   private static Block register(final String id, final Object factory, final BlockBehaviour.Properties properties) {
+      return null;
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/StairBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class StairBlock extends Block {
+   protected StairBlock(Object state, Object properties) {
+      this.registerDefaultState(
+         this.stateDefinition.any()
+            .setValue(FACING, Direction.NORTH)
+            .setValue(HALF, Half.BOTTOM)
+            .setValue(SHAPE, StairsShape.STRAIGHT)
+            .setValue(WATERLOGGED, false)
+      );
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/ChestBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class ChestBlock extends Block {
+   protected ChestBlock(Object properties) {
+      this.registerDefaultState(
+         this.stateDefinition.any().setValue(FACING, Direction.NORTH).setValue(TYPE, ChestType.SINGLE).setValue(WATERLOGGED, false)
+      );
+   }
+}`,
+    );
+
+    const result = await new DecompiledSourceExtractor(createConsoleLogger(false)).extract(root);
+
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:oak_stairs")).toMatchObject({
+      implementationClass: "StairBlock",
+      defaultState: {
+        facing: "north",
+        half: "bottom",
+        shape: "straight",
+        waterlogged: "false",
+      },
+      defaultStateSourcePath: "net/minecraft/world/level/block/StairBlock.java",
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:chest")).toMatchObject({
+      implementationClass: "ChestBlock",
+      defaultState: {
+        facing: "north",
+        type: "single",
+        waterlogged: "false",
+      },
+    });
+  });
+
   test("substitutes property-helper parameters so soundType/mapColor never leak partial tokens", async () => {
     const root = await createTempClientRoot();
     await writeJavaFile(
@@ -420,6 +493,237 @@ public class Blocks {
       explosionResistance: 4.2,
       requiresCorrectToolForDrops: true,
       mapColor: "terracotta_white",
+    });
+  });
+
+  test("expands zipMap block families with copied properties, implementations, and defaults", async () => {
+    const root = await createTempClientRoot();
+    await writeReferenceClasses(root);
+    await writeJavaFile(root, "net/minecraft/world/item/DyeColor.java", dyeColorSource());
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/Blocks.java",
+      `package net.minecraft.world.level.block;
+
+public class Blocks {
+   public static final ColorCollection<Block> WOOL = ColorCollection.registerBlocks(
+      BlockItemIds.WOOL,
+      Blocks::register,
+      (color, p) -> new Block(p),
+      color -> BlockBehaviour.Properties.of().mapColor(color.getMapColor()).strength(0.8F).sound(SoundType.WOOL)
+   );
+   public static final ColorCollection<Block> WOOL_STAIRS = ColorCollection.zipMap(
+      ColorCollection.VALUES, BlockItemIds.WOOL_STAIRS, (color, id) -> registerStair(id, WOOL.pick(color))
+   );
+   public static final ColorCollection<Block> WOOL_SLAB = ColorCollection.zipMap(
+      ColorCollection.VALUES, BlockItemIds.WOOL_SLAB, (color, id) -> registerSlab(id, WOOL.pick(color))
+   );
+
+   private static Block registerStair(final Object id, final Block base) {
+      return register(id, p -> new StairBlock(base.defaultBlockState(), p), BlockBehaviour.Properties.ofFullCopy(base));
+   }
+
+   private static Block registerSlab(final Object id, final Block base) {
+      return register(id, SlabBlock::new, BlockBehaviour.Properties.ofLegacyCopy(base));
+   }
+
+   private static Block register(final Object id, final Object factory, final BlockBehaviour.Properties properties) {
+      return null;
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/StairBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class StairBlock extends Block {
+   protected StairBlock(Object state, Object properties) {
+      this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH).setValue(HALF, Half.BOTTOM).setValue(SHAPE, StairsShape.STRAIGHT));
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/SlabBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class SlabBlock extends Block {
+   protected SlabBlock(Object properties) {
+      this.registerDefaultState(this.stateDefinition.any().setValue(TYPE, SlabType.BOTTOM));
+   }
+}`,
+    );
+
+    const result = await new DecompiledSourceExtractor(createConsoleLogger(false)).extract(root);
+    const stairs = result.blockProperties.filter((entry) => entry.id.endsWith("_wool_stairs"));
+    const slabs = result.blockProperties.filter((entry) => entry.id.endsWith("_wool_slab"));
+
+    expect(stairs).toHaveLength(16);
+    expect(slabs).toHaveLength(16);
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:white_wool_stairs")).toMatchObject({
+      implementationClass: "StairBlock",
+      copiedFrom: "minecraft:white_wool",
+      destroyTime: 0.8,
+      soundType: "wool",
+      mapColor: "quartz",
+      defaultState: { facing: "north", half: "bottom", shape: "straight" },
+      defaultStateMethod: "registerDefaultState",
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:red_wool_slab")).toMatchObject({
+      implementationClass: "SlabBlock",
+      copiedFrom: "minecraft:red_wool",
+      destroyTime: 0.8,
+      defaultState: { type: "bottom" },
+    });
+  });
+
+  test("resolves dynamic default-state expressions and inherited stateDefinition.any values", async () => {
+    const root = await createTempClientRoot();
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/Blocks.java",
+      `package net.minecraft.world.level.block;
+
+public class Blocks {
+   public static final Block CROP = register("crop", CropBlock::new, BlockBehaviour.Properties.of());
+   public static final Block BREWING_STAND = register("brewing_stand", BrewingStandBlock::new, BlockBehaviour.Properties.of());
+   public static final Block LOOM = register("loom", LoomBlock::new, BlockBehaviour.Properties.of());
+   public static final Block TEST_BLOCK = register("test_block", TestBlock::new, BlockBehaviour.Properties.of());
+   public static final Block PISTON_HEAD = register("piston_head", PistonHeadBlock::new, BlockBehaviour.Properties.of());
+
+   private static Block register(final Object id, final Object factory, final BlockBehaviour.Properties properties) {
+      return null;
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/state/properties/BlockStateProperties.java",
+      `package net.minecraft.world.level.block.state.properties;
+
+public class BlockStateProperties {
+   public static final EnumProperty<Direction> HORIZONTAL_FACING = EnumProperty.create("facing", Direction.class, Direction.Plane.HORIZONTAL);
+   public static final EnumProperty<TestBlockMode> TEST_BLOCK_MODE = EnumProperty.create("mode", TestBlockMode.class);
+   public static final EnumProperty<PistonType> PISTON_TYPE = EnumProperty.create("type", PistonType.class);
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/state/properties/TestBlockMode.java",
+      `package net.minecraft.world.level.block.state.properties;
+
+public enum TestBlockMode {
+   START,
+   LOG,
+   FAIL,
+   ACCEPT;
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/state/properties/PistonType.java",
+      `package net.minecraft.world.level.block.state.properties;
+
+public enum PistonType {
+   DEFAULT("normal"),
+   STICKY("sticky");
+
+   private final String name;
+   private PistonType(String name) { this.name = name; }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/HorizontalDirectionalBlock.java",
+      `package net.minecraft.world.level.block;
+
+public abstract class HorizontalDirectionalBlock extends Block {
+   public static final EnumProperty<Direction> FACING = BlockStateProperties.HORIZONTAL_FACING;
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/LoomBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class LoomBlock extends HorizontalDirectionalBlock {
+   protected LoomBlock(Object properties) { super(properties); }
+   protected void createBlockStateDefinition(StateDefinition.Builder builder) { builder.add(FACING); }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/TestBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class TestBlock extends Block {
+   public static final EnumProperty<TestBlockMode> MODE = BlockStateProperties.TEST_BLOCK_MODE;
+   protected TestBlock(Object properties) { super(properties); }
+   protected void createBlockStateDefinition(StateDefinition.Builder builder) { builder.add(MODE); }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/CropBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class CropBlock extends Block {
+   protected CropBlock(Object properties) {
+      super(properties);
+      this.registerDefaultState(this.stateDefinition.any().setValue(this.getAgeProperty(), 0));
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/BrewingStandBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class BrewingStandBlock extends Block {
+   public static final BooleanProperty[] HAS_BOTTLE = new BooleanProperty[]{
+      BlockStateProperties.HAS_BOTTLE_0, BlockStateProperties.HAS_BOTTLE_1, BlockStateProperties.HAS_BOTTLE_2
+   };
+   protected BrewingStandBlock(Object properties) {
+      super(properties);
+      this.registerDefaultState(this.stateDefinition.any().setValue(HAS_BOTTLE[0], false).setValue(HAS_BOTTLE[1], false).setValue(HAS_BOTTLE[2], false));
+   }
+}`,
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/level/block/PistonHeadBlock.java",
+      `package net.minecraft.world.level.block;
+
+public class PistonHeadBlock extends Block {
+   public static final EnumProperty<PistonType> TYPE = BlockStateProperties.PISTON_TYPE;
+   protected PistonHeadBlock(Object properties) {
+      super(properties);
+      this.registerDefaultState(this.stateDefinition.any().setValue(TYPE, PistonType.DEFAULT));
+   }
+   protected void createBlockStateDefinition(StateDefinition.Builder builder) { builder.add(TYPE); }
+}`,
+    );
+
+    const result = await new DecompiledSourceExtractor(createConsoleLogger(false)).extract(root);
+
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:crop")).toMatchObject({
+      defaultState: { age: "0" },
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:brewing_stand")).toMatchObject({
+      defaultState: { has_bottle_0: "false", has_bottle_1: "false", has_bottle_2: "false" },
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:loom")).toMatchObject({
+      defaultState: { facing: "north" },
+      defaultStateMethod: "stateDefinition.any",
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:test_block")).toMatchObject({
+      defaultState: { mode: "start" },
+      defaultStateMethod: "stateDefinition.any",
+    });
+    expect(result.blockProperties.find((entry) => entry.id === "minecraft:piston_head")).toMatchObject({
+      defaultState: { type: "normal" },
+      defaultStateMethod: "registerDefaultState",
     });
   });
 
@@ -762,6 +1066,8 @@ public class BlockItemIds {
    public static final BlockItemId DEEPSLATE_VARIANT = BlockItemId.create("deepslate_variant");
    public static final BlockItemId BEETROOT_CROP = BlockItemId.create("beetroots", "beetroot_seeds");
    public static final ColorCollection<BlockItemId> WOOL = createSimpleColored("wool");
+   public static final ColorCollection<BlockItemId> WOOL_STAIRS = createSimpleColored("wool_stairs");
+   public static final ColorCollection<BlockItemId> WOOL_SLAB = createSimpleColored("wool_slab");
    public static final ColorCollection<BlockItemId> DYED_TERRACOTTA = createSimpleColored("terracotta");
    public static final ColorCollection<BlockItemId> DYED_SHULKER_BOX = createSimpleColored("shulker_box");
    public static final WeatheringCopperCollection<BlockItemId> COPPER_BLOCK = createSimpleCopper("copper");

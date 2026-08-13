@@ -157,16 +157,20 @@ describe("data extractor", () => {
 
   test("reads recipes from singular recipe directories used by bundled jars", async () => {
     const archive = new InMemoryArchiveSource({
+      "assets/minecraft/items/stick.json": JSON.stringify({
+        model: {
+          type: "minecraft:model",
+          model: "minecraft:item/stick",
+        },
+      }),
       "data/minecraft/recipe/stick.json": JSON.stringify({
         type: "minecraft:crafting_shaped",
         pattern: ["#", "#"],
         key: {
-          "#": {
-            item: "minecraft:oak_planks",
-          },
+          "#": "#minecraft:planks",
         },
         result: {
-          item: "minecraft:stick",
+          id: "minecraft:stick",
           count: 4,
         },
       }),
@@ -178,12 +182,43 @@ describe("data extractor", () => {
     expect(dataset.recipes[0]).toMatchObject({
       id: "minecraft:stick",
       type: "minecraft:crafting_shaped",
-      ingredients: ["minecraft:oak_planks"],
+      ingredients: [],
+      ingredientTags: ["minecraft:planks"],
       result: {
         item: "minecraft:stick",
         count: 4,
       },
     });
+    expect(dataset.items[0]?.recipeIds).toEqual(["minecraft:stick"]);
+  });
+
+  test("resolves current singular block and item tags, including nested tags", async () => {
+    const archive = new InMemoryArchiveSource({
+      "assets/minecraft/blockstates/oak_planks.json": JSON.stringify({ variants: {} }),
+      "assets/minecraft/items/oak_planks.json": JSON.stringify({ model: {} }),
+      "assets/minecraft/items/stick.json": JSON.stringify({ model: {} }),
+      "data/minecraft/tags/block/planks.json": JSON.stringify({
+        values: ["minecraft:oak_planks"],
+      }),
+      "data/minecraft/tags/block/mineable/axe.json": JSON.stringify({
+        values: ["#minecraft:planks"],
+      }),
+      "data/minecraft/tags/item/planks.json": JSON.stringify({
+        values: ["minecraft:oak_planks"],
+      }),
+      "data/minecraft/tags/item/building_materials.json": JSON.stringify({
+        values: ["#minecraft:planks", { id: "minecraft:stick", required: false }],
+      }),
+    });
+
+    const dataset = await new MinecraftDataExtractor(createConsoleLogger(false)).extract("26.3-snapshot-7", [archive]);
+    const oakBlock = dataset.blocks.find((block) => block.id === "minecraft:oak_planks");
+    const oakItem = dataset.items.find((item) => item.id === "minecraft:oak_planks");
+    const stick = dataset.items.find((item) => item.id === "minecraft:stick");
+
+    expect(oakBlock?.tags).toEqual(["minecraft:mineable/axe", "minecraft:planks"]);
+    expect(oakItem?.tags).toEqual(["minecraft:building_materials", "minecraft:planks"]);
+    expect(stick?.tags).toEqual(["minecraft:building_materials"]);
   });
 
   test("extracts enchantments, tags, loot tables, advancements, and translations", async () => {

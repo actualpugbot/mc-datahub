@@ -27,6 +27,7 @@ import type { TreeFeaturesExtractor } from "../extraction/treeFeaturesExtractor.
 import type { MobAnimationExtractor } from "../extraction/mobAnimationExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 import { validateRenderDataset } from "../validation/renderValidation.js";
+import { validateDataset } from "../validation/datasetValidation.js";
 
 export interface ProcessVersionOptions {
   mappingProvider: MappingProvider;
@@ -141,6 +142,7 @@ export class ProcessVersionWorkflow {
     dataset.renderData = await this.renderDataExtractor.extract(manifestEntry.id, sources, {
       translations: dataset.translations,
       blocks: dataset.blocks,
+      blockProperties: dataset.blockProperties,
       mobModels,
       decompiledClientRoot,
     });
@@ -160,6 +162,12 @@ export class ProcessVersionWorkflow {
     const mobSoundMinecraftWiki = await this.buildMobSoundMinecraftWikiArtifacts(manifestEntry.id, dataset.mobSounds);
     if (mobSoundMinecraftWiki) {
       dataset.mobSoundMinecraftWiki = mobSoundMinecraftWiki.alignment;
+    }
+    dataset.datasetValidation = validateDataset(dataset);
+    if (dataset.datasetValidation.status === "failed") {
+      throw new Error(
+        `Dataset validation failed for ${manifestEntry.id} with ${dataset.datasetValidation.counts.errors} error(s).`,
+      );
     }
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);

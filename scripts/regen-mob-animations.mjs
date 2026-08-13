@@ -2,7 +2,7 @@
 // Re-extract mob animations into an already-processed dataset without running
 // the full pipeline (re-uses the dataset's existing mob-models.json geometry).
 // Requires a prior `npm run build`. Usage: node scripts/regen-mob-animations.mjs [version]
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeJsonFile } from "../dist/core/fs.js";
 import { createConsoleLogger } from "../dist/core/logger.js";
@@ -38,12 +38,11 @@ await writeJsonFile(join(datasetDir, "mob-animations.json"), {
 });
 
 // Patch the combined dataset.json in place so its embedded copy stays in sync.
-try {
-  const dataset = JSON.parse(readFileSync(join(datasetDir, "dataset.json"), "utf8"));
+const datasetPath = join(datasetDir, "dataset.json");
+if (existsSync(datasetPath)) {
+  const dataset = JSON.parse(readFileSync(datasetPath, "utf8"));
   dataset.mobAnimations = mobs;
-  await writeJsonFile(join(datasetDir, "dataset.json"), dataset);
-} catch {
-  // dataset.json may not exist for partial workspaces; the sidecar is still written.
+  await writeJsonFile(datasetPath, dataset);
 }
 
 console.log(`Wrote ${mobs.length} mob animations to ${join(datasetDir, "mob-animations.json")}`);

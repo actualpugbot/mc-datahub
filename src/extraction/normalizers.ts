@@ -75,24 +75,72 @@ export function normalizeRecipeResult(value: JsonValue | undefined): RecipeResul
   }
 
   if (!Array.isArray(value) && typeof value === "object") {
-    const item = typeof value.item === "string" ? normalizeMinecraftId(value.item) : undefined;
+    const itemId = typeof value.item === "string" ? value.item : typeof value.id === "string" ? value.id : undefined;
+    const item = itemId ? normalizeMinecraftId(itemId) : undefined;
     const tag = typeof value.tag === "string" ? normalizeMinecraftId(value.tag) : undefined;
     const count = typeof value.count === "number" ? value.count : 1;
+    const components =
+      value.components && typeof value.components === "object" && !Array.isArray(value.components) ? value.components : undefined;
+
+    if (!item && !tag) {
+      return undefined;
+    }
+
     return {
       item,
       tag,
       count,
+      components,
     };
   }
 
   return undefined;
 }
 
+// The recipe codec uses named slots instead of one shared ingredient property.
+// Limit traversal to those slots so metadata such as type, group, category, and
+// the symbols in a shaped recipe's pattern cannot be mistaken for item ids.
+const RECIPE_INGREDIENT_FIELDS = [
+  "ingredient",
+  "ingredients",
+  "key",
+  "template",
+  "base",
+  "addition",
+  "input",
+  "reagent",
+  "back",
+  "front",
+  "left",
+  "right",
+  "dye",
+  "target",
+  "material",
+  "source",
+  "banner",
+  "fuel",
+  "shell",
+  "star",
+  "shapes",
+  "trail",
+  "twinkle",
+  "map",
+] as const;
+
 export function normalizeRecipe(id: string, sourcePath: string, raw: JsonValue): RecipeDefinition {
   const ingredients = new Set<string>();
   const ingredientTags = new Set<string>();
 
   const collectIngredients = (value: JsonValue): void => {
+    if (typeof value === "string") {
+      if (value.startsWith("#")) {
+        ingredientTags.add(normalizeMinecraftId(value));
+      } else {
+        ingredients.add(normalizeMinecraftId(value));
+      }
+      return;
+    }
+
     if (Array.isArray(value)) {
       for (const entry of value) {
         collectIngredients(entry);
@@ -104,28 +152,34 @@ export function normalizeRecipe(id: string, sourcePath: string, raw: JsonValue):
       return;
     }
 
-    if (typeof value.item === "string") {
-      ingredients.add(normalizeMinecraftId(value.item));
+    const itemId = typeof value.item === "string" ? value.item : typeof value.id === "string" ? value.id : undefined;
+    if (itemId) {
+      ingredients.add(normalizeMinecraftId(itemId));
     }
 
     if (typeof value.tag === "string") {
       ingredientTags.add(normalizeMinecraftId(value.tag));
     }
 
+    if (itemId || typeof value.tag === "string") {
+      return;
+    }
+
     for (const entry of Object.values(value)) {
-      if (entry !== value.result) {
-        collectIngredients(entry);
-      }
+      collectIngredients(entry);
     }
   };
 
-  collectIngredients(raw);
+  const recipe = !Array.isArray(raw) && raw && typeof raw === "object" ? raw : undefined;
+  for (const field of RECIPE_INGREDIENT_FIELDS) {
+    const value = recipe?.[field];
+    if (value !== undefined) {
+      collectIngredients(value);
+    }
+  }
 
-  const type = !Array.isArray(raw) && raw && typeof raw === "object" && typeof raw.type === "string" ? raw.type : "unknown";
-  const result =
-    !Array.isArray(raw) && raw && typeof raw === "object"
-      ? normalizeRecipeResult(raw.result as JsonValue | undefined)
-      : undefined;
+  const type = recipe && typeof recipe.type === "string" ? recipe.type : "unknown";
+  const result = normalizeRecipeResult(recipe?.result ?? recipe?.output);
 
   return {
     id,

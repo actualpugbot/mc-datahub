@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { InMemoryArchiveSource } from "../src/archive/archiveSource.js";
 import { createConsoleLogger } from "../src/core/logger.js";
 import { RenderDataExtractor } from "../src/extraction/renderDataExtractor.js";
+import type { BlockPropertyDefinition } from "../src/domain/types.js";
 
 describe("render data extractor", () => {
   test("preserves blockstate parts and resolves model parent textures", async () => {
@@ -97,6 +98,49 @@ describe("render data extractor", () => {
       scale: [1, 1, 1],
     });
     expect(data.specialRenderers.some((entry) => entry.id === "minecraft:shield" && entry.rendererKind === "shield")).toBe(true);
+  });
+
+  test("uses source-derived block defaults instead of alphabetically first variants", async () => {
+    const archive = new InMemoryArchiveSource({
+      "assets/minecraft/blockstates/oak_stairs.json": JSON.stringify({
+        variants: {
+          "facing=east,half=bottom,shape=inner_left,waterlogged=false": { model: "minecraft:block/oak_stairs" },
+          "facing=north,half=bottom,shape=straight,waterlogged=false": { model: "minecraft:block/oak_stairs" },
+        },
+      }),
+    });
+    const blockProperties: BlockPropertyDefinition[] = [
+      {
+        id: "minecraft:oak_stairs",
+        sourcePath: "net/minecraft/world/level/block/Blocks.java",
+        sourceSymbol: "OAK_STAIRS",
+        implementationClass: "StairBlock",
+        defaultState: { facing: "north", half: "bottom", shape: "straight", waterlogged: "false" },
+        defaultStateSourcePath: "net/minecraft/world/level/block/StairBlock.java",
+        requiresCorrectToolForDrops: false,
+        ignitedByLava: false,
+        randomTicks: false,
+        noCollision: false,
+        replaceable: false,
+      },
+    ];
+
+    const data = await new RenderDataExtractor(createConsoleLogger(false)).extract("test", [archive], {
+      blockProperties,
+    });
+    const stairs = data.blockstates[0];
+
+    expect(stairs?.defaultState).toEqual({
+      facing: "north",
+      half: "bottom",
+      shape: "straight",
+      waterlogged: "false",
+    });
+    expect(stairs?.defaultStateProvenance).toMatchObject({
+      kind: "client-source",
+      className: "StairBlock",
+      method: "registerDefaultState",
+    });
   });
 });
 

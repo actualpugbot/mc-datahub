@@ -115,13 +115,7 @@ export class TreeFeaturesExtractor {
     this.tagCache = new Map();
 
     const warnings: string[] = [];
-    const sourcePaths: string[] = [
-      TREE_GROWER_SOURCE,
-      TREE_FEATURES_SOURCE,
-      SAPLING_SOURCE,
-      BLOCKS_SOURCE,
-      this.featureDir,
-    ];
+    const sourcePaths: string[] = [TREE_GROWER_SOURCE, TREE_FEATURES_SOURCE, SAPLING_SOURCE, BLOCKS_SOURCE, this.featureDir];
 
     const featureKeys = await this.readTreeFeatureKeys(decompiledClientRoot, warnings);
     const growers = await this.readGrowers(growerPath, featureKeys, warnings);
@@ -600,7 +594,9 @@ export class TreeFeaturesExtractor {
     const itemsPath = join(root, ITEMS_SOURCE);
     const providersPath = join(root, NUMBER_PROVIDERS_SOURCE);
     if (!(await fileExists(itemsPath)) || !(await fileExists(providersPath))) {
-      warnings.push(`Neither ${kind === "fuel" ? FUEL_SOURCE : "ComposterBlock COMPOSTABLES"} nor the Items.java/NumberProviders.java pair was found; ${kind} values omitted.`);
+      warnings.push(
+        `Neither ${kind === "fuel" ? FUEL_SOURCE : "ComposterBlock COMPOSTABLES"} nor the Items.java/NumberProviders.java pair was found; ${kind} values omitted.`,
+      );
       return values;
     }
 

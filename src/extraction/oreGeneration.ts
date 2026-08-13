@@ -11,10 +11,7 @@ import type {
 } from "../domain/types.js";
 
 /** 26.3 snapshots renamed worldgen/configured_feature to worldgen/feature; support both layouts. */
-const CONFIGURED_FEATURE_PREFIXES = [
-  "data/minecraft/worldgen/feature/",
-  "data/minecraft/worldgen/configured_feature/",
-];
+const CONFIGURED_FEATURE_PREFIXES = ["data/minecraft/worldgen/feature/", "data/minecraft/worldgen/configured_feature/"];
 const PLACED_FEATURE_PREFIX = "data/minecraft/worldgen/placed_feature/";
 const NOISE_SETTINGS = new Map<OreGenerationDimension["id"], string>([
   ["overworld", "data/minecraft/worldgen/noise_settings/overworld.json"],

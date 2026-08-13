@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { InMemoryArchiveSource } from "../src/archive/archiveSource.js";
 import { createWorkspacePaths } from "../src/core/paths.js";
 import { createConsoleLogger } from "../src/core/logger.js";
@@ -46,6 +46,18 @@ describe("dataset store", () => {
       advancements: [],
       translations: [],
       biomes: [],
+      structures: [
+        {
+          id: "minecraft:older_structure",
+          key: "older_structure",
+          name: "Older Structure",
+          type: "minecraft:jigsaw",
+          step: "surface_structures",
+          biomes: "#minecraft:has_structure/older_structure",
+          sourcePath: "data/minecraft/worldgen/structure/older_structure.json",
+          raw: {},
+        },
+      ],
       mobImages: [
         {
           id: "minecraft:allay",
@@ -166,6 +178,52 @@ describe("dataset store", () => {
     expect(loaded.mobImages[0]?.imagePath).toBe("mob-images/allay/allay.png");
     expect(loaded.mobAnimations?.[0]?.clips[0]?.name).toBe("idle");
     expect(loaded.mobSoundMinecraftWiki?.categories[0]?.id).toBe("allay");
+
+    const mobModelsPath = join(root, "datasets/25w14a/mob-models.json");
+    const mobModelsSidecar = JSON.parse(await fs.readFile(mobModelsPath, "utf8")) as {
+      mobs: VersionDataset["mobModels"];
+    };
+    mobModelsSidecar.mobs[0]!.displayName = "Allay from newer sidecar";
+    await fs.writeFile(mobModelsPath, JSON.stringify(mobModelsSidecar), "utf8");
+
+    const warn = vi.fn();
+    const driftAwareStore = new DatasetStore(createWorkspacePaths(root), {
+      info: vi.fn(),
+      warn,
+      error: vi.fn(),
+      debug: vi.fn(),
+    });
+    const driftAwareDataset = await driftAwareStore.loadDataset("25w14a");
+    expect(driftAwareDataset.mobModels[0]?.displayName).toBe("Allay from newer sidecar");
+    expect(warn).toHaveBeenCalledWith(
+      "Sidecar mob-models.json differs from embedded dataset.json; using the sidecar collection.",
+    );
+
+    await fs.writeFile(
+      join(root, "datasets/25w14a/structures.json"),
+      JSON.stringify({
+        version: "25w14a",
+        generatedAt: dataset.generatedAt,
+        structures: [
+          {
+            id: "minecraft:newer_structure",
+            key: "newer_structure",
+            name: "Newer Structure",
+            type: "minecraft:jigsaw",
+            step: "surface_structures",
+            biomes: "#minecraft:has_structure/newer_structure",
+            sourcePath: "data/minecraft/worldgen/structure/newer_structure.json",
+            raw: {},
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const structureDriftDataset = await driftAwareStore.loadDataset("25w14a");
+    expect(structureDriftDataset.structures?.map((structure) => structure.id)).toEqual(["minecraft:newer_structure"]);
+    expect(warn).toHaveBeenCalledWith(
+      "Sidecar structures.json differs from embedded dataset.json; using the sidecar collection.",
+    );
   });
 
   test("loads biome and banner sidecars for legacy dataset json files", async () => {

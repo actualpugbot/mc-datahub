@@ -1,6 +1,7 @@
 import type { ArchiveSource } from "../archive/archiveSource.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { ensureDir, fileExists, readJsonFile, writeBufferFile, writeJsonFile, writeTextFile } from "../core/fs.js";
 import type { Logger } from "../core/logger.js";
 import { datasetVersionDir, type WorkspacePaths } from "../core/paths.js";
@@ -56,7 +57,6 @@ export class DatasetStore {
     }
 
     await Promise.all([
-      writeJsonFile(join(directory, "dataset.json"), dataset),
       writeJsonFile(join(directory, "blocks.json"), dataset.blocks),
       writeJsonFile(join(directory, "items.json"), dataset.items),
       writeJsonFile(join(directory, "item-stats.json"), dataset.itemStats),
@@ -219,7 +219,13 @@ export class DatasetStore {
       ...(dataset.mobSoundMinecraftWiki
         ? [writeJsonFile(join(directory, "mob-sounds-minecraft-wiki.json"), dataset.mobSoundMinecraftWiki)]
         : []),
+      ...(dataset.datasetValidation
+        ? [writeJsonFile(join(directory, "dataset-validation.json"), dataset.datasetValidation)]
+        : []),
     ]);
+    // The combined dataset is the commit marker for a completed publication.
+    // Write it only after every sidecar has been replaced successfully.
+    await writeJsonFile(join(directory, "dataset.json"), dataset);
 
     this.logger.debug(`Saved dataset for ${dataset.version} to ${directory}.`);
     return join(directory, "dataset.json");
@@ -251,24 +257,34 @@ export class DatasetStore {
     const biomes = dataset.biomes ?? (await this.loadBiomeSidecar(directory));
     const banners = dataset.banners ?? (await this.loadBannerSidecar(directory));
     const oreGeneration = dataset.oreGeneration ?? (await this.loadOreGenerationSidecar(directory));
-    const mobModels = this.normalizeMobModelTextureAssets(dataset.mobModels ?? (await this.loadMobModelSidecar(directory)));
-    const blockEntityModels = this.normalizeMobModelTextureAssets(
-      dataset.blockEntityModels ?? (await this.loadBlockEntityModelSidecar(directory)),
+    const [mobModelSidecar, blockEntityModelSidecar, mobAnimationSidecar] = await Promise.all([
+      this.loadMobModelSidecar(directory),
+      this.loadBlockEntityModelSidecar(directory),
+      this.loadMobAnimationSidecar(directory),
+    ]);
+    const mobModels = this.normalizeMobModelTextureAssets(
+      this.preferSidecarCollection("mob-models.json", dataset.mobModels, mobModelSidecar),
     );
-    const mobAnimations = dataset.mobAnimations ?? (await this.loadMobAnimationSidecar(directory));
+    const blockEntityModels = this.normalizeMobModelTextureAssets(
+      this.preferSidecarCollection("block-entity-models.json", dataset.blockEntityModels, blockEntityModelSidecar),
+    );
+    const mobAnimations = this.preferSidecarCollection("mob-animations.json", dataset.mobAnimations, mobAnimationSidecar);
     const renderData = dataset.renderData ?? (await this.loadRenderDataSidecar(directory, dataset.version, dataset.generatedAt));
     const mobProfiles = dataset.mobProfiles ?? (await this.loadMobProfileSidecar(directory));
-    const structures =
-      dataset.structures ?? (await this.loadCollectionSidecar<StructureDefinition>(directory, "structures.json", "structures"));
-    const templatePools =
-      dataset.templatePools ??
-      (await this.loadCollectionSidecar<TemplatePoolDefinition>(directory, "template-pools.json", "pools"));
-    const processorLists =
-      dataset.processorLists ??
-      (await this.loadCollectionSidecar<ProcessorListDefinition>(directory, "processor-lists.json", "processorLists"));
-    const structureTemplates =
-      dataset.structureTemplates ??
-      (await this.loadCollectionSidecar<StructureTemplateDefinition>(directory, "structure-templates.json", "templates"));
+    const [structureSidecar, templatePoolSidecar, processorListSidecar, structureTemplateSidecar] = await Promise.all([
+      this.loadCollectionSidecar<StructureDefinition>(directory, "structures.json", "structures"),
+      this.loadCollectionSidecar<TemplatePoolDefinition>(directory, "template-pools.json", "pools"),
+      this.loadCollectionSidecar<ProcessorListDefinition>(directory, "processor-lists.json", "processorLists"),
+      this.loadCollectionSidecar<StructureTemplateDefinition>(directory, "structure-templates.json", "templates"),
+    ]);
+    const structures = this.preferSidecarCollection("structures.json", dataset.structures, structureSidecar);
+    const templatePools = this.preferSidecarCollection("template-pools.json", dataset.templatePools, templatePoolSidecar);
+    const processorLists = this.preferSidecarCollection("processor-lists.json", dataset.processorLists, processorListSidecar);
+    const structureTemplates = this.preferSidecarCollection(
+      "structure-templates.json",
+      dataset.structureTemplates,
+      structureTemplateSidecar,
+    );
 
     return {
       ...dataset,
@@ -347,10 +363,10 @@ export class DatasetStore {
     return oreGeneration;
   }
 
-  private async loadMobModelSidecar(directory: string): Promise<MobModelDefinition[]> {
+  private async loadMobModelSidecar(directory: string): Promise<MobModelDefinition[] | undefined> {
     const path = join(directory, "mob-models.json");
     if (!(await fileExists(path))) {
-      return [];
+      return undefined;
     }
 
     const payload = await readJsonFile<{ mobs?: MobModelDefinition[] } | MobModelDefinition[]>(path);
@@ -367,30 +383,30 @@ export class DatasetStore {
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
   }
 
-  private async loadBlockEntityModelSidecar(directory: string): Promise<MobModelDefinition[]> {
+  private async loadBlockEntityModelSidecar(directory: string): Promise<MobModelDefinition[] | undefined> {
     const path = join(directory, "block-entity-models.json");
     if (!(await fileExists(path))) {
-      return [];
+      return undefined;
     }
 
     const payload = await readJsonFile<{ blockEntities?: MobModelDefinition[] } | MobModelDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.blockEntities ?? []);
   }
 
-  private async loadMobAnimationSidecar(directory: string): Promise<MobAnimationDefinition[]> {
+  private async loadMobAnimationSidecar(directory: string): Promise<MobAnimationDefinition[] | undefined> {
     const path = join(directory, "mob-animations.json");
     if (!(await fileExists(path))) {
-      return [];
+      return undefined;
     }
 
     const payload = await readJsonFile<{ mobs?: MobAnimationDefinition[] } | MobAnimationDefinition[]>(path);
     return Array.isArray(payload) ? payload : (payload.mobs ?? []);
   }
 
-  private async loadCollectionSidecar<T>(directory: string, fileName: string, key: string): Promise<T[]> {
+  private async loadCollectionSidecar<T>(directory: string, fileName: string, key: string): Promise<T[] | undefined> {
     const path = join(directory, fileName);
     if (!(await fileExists(path))) {
-      return [];
+      return undefined;
     }
 
     const payload = await readJsonFile<Record<string, T[] | undefined> | T[]>(path);
@@ -476,6 +492,18 @@ export class DatasetStore {
               imagePath: `images/${sourcePath.replace(/^assets\/minecraft\/textures\//, "")}`,
             })),
     }));
+  }
+
+  private preferSidecarCollection<T>(fileName: string, embedded: T[] | undefined, sidecar: T[] | undefined): T[] {
+    if (sidecar === undefined) {
+      return embedded ?? [];
+    }
+
+    if (embedded !== undefined && !isDeepStrictEqual(embedded, sidecar)) {
+      this.logger.warn(`Sidecar ${fileName} differs from embedded dataset.json; using the sidecar collection.`);
+    }
+
+    return sidecar;
   }
 
   async saveDiff(diff: VersionDiff): Promise<string> {
