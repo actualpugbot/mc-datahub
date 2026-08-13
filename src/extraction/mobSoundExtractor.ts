@@ -23,6 +23,8 @@ const ENTITY_TYPE_SOURCE_PATHS = [
 ] as const;
 const ENTITY_TYPE_IDS_SOURCE_PATH = "net/minecraft/world/entity/EntityTypeIds.java";
 const ARCHIVE_LANGUAGE_PATH = "assets/minecraft/lang/en_us.json";
+// 26.x per-variant mob voices live in datapack registries named data/minecraft/<mob>_sound_variant/.
+const SOUND_VARIANT_REGISTRY_SUFFIX = "_sound_variant";
 const IMMUTABLE_CACHE_MS = 1000 * 60 * 60 * 24 * 365;
 
 const ALLOWED_MOB_CATEGORIES = new Set([
@@ -174,6 +176,7 @@ export class MobSoundExtractor {
     const eventsByNormalizedSoundId = this.groupEntityEventsByNormalizedId(soundManifest);
     const soundIdsByNormalizedId = this.groupSoundIdsByNormalizedId(soundManifest);
     const registrations = await this.loadMobRegistrations(decompiledClientRoot, languageMap, soundManifest);
+    const soundVariantEventIdsByMob = await this.loadSoundVariantEventIds(decompiledClientRoot, soundManifest);
 
     const mobSounds = registrations
       .map((registration) =>
@@ -181,6 +184,7 @@ export class MobSoundExtractor {
           registration,
           eventsByNormalizedSoundId,
           soundIdsByNormalizedId,
+          soundVariantEventIdsByMob,
           soundManifest,
           languageMap,
           assetIndex,
@@ -425,6 +429,80 @@ export class MobSoundExtractor {
     return Array.from(registrations.values()).sort((left, right) => left.localId.localeCompare(right.localId));
   }
 
+  // Variant voices (entity.cow_moody.*, entity.baby_pig.*, ...) don't follow the
+  // entity.<mob>.* naming, so grouping sound events by sound id never attaches
+  // them to a mob. The <mob>_sound_variant datapack registries are the source of
+  // truth for which mob owns each of those events.
+  private async loadSoundVariantEventIds(
+    decompiledClientRoot: string,
+    soundManifest: SoundManifest,
+  ): Promise<Map<string, string[]>> {
+    const registryRoot = join(decompiledClientRoot, "data", "minecraft");
+    let registryEntries;
+    try {
+      registryEntries = await fs.readdir(registryRoot, { withFileTypes: true });
+    } catch {
+      return new Map();
+    }
+
+    const eventIdsByMob = new Map<string, string[]>();
+    for (const registryEntry of registryEntries) {
+      if (!registryEntry.isDirectory() || !registryEntry.name.endsWith(SOUND_VARIANT_REGISTRY_SUFFIX)) {
+        continue;
+      }
+
+      const mobLocalId = registryEntry.name.slice(0, -SOUND_VARIANT_REGISTRY_SUFFIX.length);
+      const registryDir = join(registryRoot, registryEntry.name);
+      const eventIds = new Set<string>();
+      for (const fileName of (await fs.readdir(registryDir)).sort()) {
+        if (!fileName.endsWith(".json")) {
+          continue;
+        }
+
+        const raw = JSON.parse(await fs.readFile(join(registryDir, fileName), "utf8")) as JsonValue;
+        this.collectSoundEventReferences(raw, eventIds);
+      }
+
+      const knownEventIds = [...eventIds]
+        .filter((eventId) => {
+          if (soundManifest[eventId]) {
+            return true;
+          }
+
+          this.logger.debug(`Skipping sound-variant event missing from sounds.json: ${eventId}`);
+          return false;
+        })
+        .sort();
+      if (knownEventIds.length > 0) {
+        eventIdsByMob.set(mobLocalId, knownEventIds);
+      }
+    }
+
+    return eventIdsByMob;
+  }
+
+  private collectSoundEventReferences(value: JsonValue, eventIds: Set<string>): void {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        this.collectSoundEventReferences(entry, eventIds);
+      }
+      return;
+    }
+
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    for (const [key, entry] of Object.entries(value)) {
+      if (key.endsWith("_sound") && typeof entry === "string") {
+        eventIds.add(stripMinecraftNamespace(entry));
+        continue;
+      }
+
+      this.collectSoundEventReferences(entry, eventIds);
+    }
+  }
+
   private groupEntityEventsByNormalizedId(soundManifest: SoundManifest): Map<string, string[]> {
     const grouped = new Map<string, string[]>();
     for (const eventId of Object.keys(soundManifest).sort()) {
@@ -463,6 +541,7 @@ export class MobSoundExtractor {
     registration: MobRegistration,
     eventsByNormalizedSoundId: Map<string, string[]>,
     soundIdsByNormalizedId: Map<string, string>,
+    soundVariantEventIdsByMob: Map<string, string[]>,
     soundManifest: SoundManifest,
     languageMap: LanguageMap,
     assetIndex: AssetIndexResponse,
@@ -477,6 +556,11 @@ export class MobSoundExtractor {
         soundEventIds = eventsByNormalizedSoundId.get(normalizedFallback) ?? [];
         soundId = soundIdsByNormalizedId.get(normalizedFallback) ?? fallbackId;
       }
+    }
+
+    const variantEventIds = soundVariantEventIdsByMob.get(registration.localId) ?? [];
+    if (variantEventIds.length > 0) {
+      soundEventIds = [...new Set([...soundEventIds, ...variantEventIds])].sort();
     }
     const translationKey = `entity.minecraft.${registration.localId}`;
     const displayName = languageMap[translationKey] ?? humanizeIdentifier(registration.localId);

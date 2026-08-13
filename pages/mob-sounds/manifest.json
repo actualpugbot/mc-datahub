@@ -1,5 +1,5 @@
 {
-  "objectCount": 2051,
-  "totalBytes": 28431093,
+  "objectCount": 2249,
+  "totalBytes": 30611046,
   "note": "Content-addressed mob sound objects from resources.download.minecraft.net. Regenerate with scripts/download-mob-sounds.mjs."
 }

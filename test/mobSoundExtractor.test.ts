@@ -420,6 +420,121 @@ public class EntityTypes {
     });
     expect(result.mobSounds.find((entry) => entry.localId === "zombie")?.displayName).toBe("Zombie");
   });
+
+  test("attaches sound_variant registry voices (including nested baby sounds) to the owning mob", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mc-datahub-mob-sound-variant-"));
+    tempDirs.add(root);
+
+    const decompiledClientRoot = join(root, "decompiled-client");
+    await writeJavaFile(
+      decompiledClientRoot,
+      "net/minecraft/world/entity/EntityType.java",
+      `package net.minecraft.world.entity;
+
+public class EntityType<T extends Entity> {
+   public static final EntityType<Cow> COW = register(
+      "cow",
+      EntityType.Builder.of(Cow::new, MobCategory.CREATURE).sized(0.9F, 1.4F)
+   );
+}`,
+    );
+    await writeJavaFile(
+      decompiledClientRoot,
+      "data/minecraft/cow_sound_variant/classic.json",
+      JSON.stringify({
+        adult_sounds: {
+          ambient_sound: "minecraft:entity.cow.ambient",
+        },
+        baby_sounds: {
+          ambient_sound: "minecraft:entity.baby_cow.ambient",
+        },
+      }),
+    );
+    await writeJavaFile(
+      decompiledClientRoot,
+      "data/minecraft/cow_sound_variant/moody.json",
+      JSON.stringify({
+        ambient_sound: "minecraft:entity.cow_moody.ambient",
+        step_sound: "minecraft:entity.cow_moody.step",
+      }),
+    );
+
+    const assetIndexUrl = "https://example.invalid/assets/variant.json";
+    const soundsHash = "6600000000000000000000000000000000000000";
+    const langHash = "7700000000000000000000000000000000000000";
+    const sayHash = "8800000000000000000000000000000000000000";
+    const moodyHash = "9900000000000000000000000000000000000000";
+    const babyHash = "ab00000000000000000000000000000000000000";
+
+    const http = createHttpClient({
+      [assetIndexUrl]: {
+        objects: {
+          "minecraft/lang/en_us.json": { hash: langHash, size: 100 },
+          "minecraft/sounds.json": { hash: soundsHash, size: 200 },
+          "minecraft/sounds/mob/cow/say1.ogg": { hash: sayHash, size: 10 },
+          "minecraft/sounds/mob/cow/moody/ambient1.ogg": { hash: moodyHash, size: 11 },
+          "minecraft/sounds/mob/cow/baby/ambient1.ogg": { hash: babyHash, size: 12 },
+        },
+      },
+      [toAssetUrl(soundsHash)]: {
+        "entity.cow.ambient": {
+          sounds: ["mob/cow/say1"],
+        },
+        "entity.cow_moody.ambient": {
+          subtitle: "subtitles.entity.cow.ambient",
+          sounds: ["mob/cow/moody/ambient1"],
+        },
+        "entity.baby_cow.ambient": {
+          sounds: ["mob/cow/baby/ambient1"],
+        },
+      },
+      [toAssetUrl(langHash)]: {
+        "entity.minecraft.cow": "Cow",
+        "subtitles.entity.cow.ambient": "Cow moos",
+      },
+    });
+
+    const extractor = new MobSoundExtractor(http, new FileCache(join(root, "cache")), createConsoleLogger(false));
+    const result = await extractor.extract(
+      "26.2",
+      {
+        id: "26.2",
+        type: "release",
+        releaseTime: "2026-06-12T00:00:00.000Z",
+        time: "2026-06-12T00:00:00.000Z",
+        downloads: {},
+        assetIndex: {
+          url: assetIndexUrl,
+        },
+      },
+      [new InMemoryArchiveSource({})],
+      decompiledClientRoot,
+    );
+
+    expect(result.mobSounds).toHaveLength(1);
+    const cow = result.mobSounds[0];
+    expect(cow?.localId).toBe("cow");
+    // entity.baby_cow.* and entity.cow_moody.* don't match the entity.cow.* sound
+    // id, so they only surface via the cow_sound_variant registry references.
+    // entity.cow_moody.step is referenced but missing from sounds.json -> dropped.
+    expect(cow?.soundEvents.map((event) => event.id)).toEqual([
+      "entity.baby_cow.ambient",
+      "entity.cow.ambient",
+      "entity.cow_moody.ambient",
+    ]);
+    expect(cow?.soundEventCount).toBe(3);
+    expect(cow?.soundVariantCount).toBe(3);
+    expect(cow?.soundEvents[2]).toMatchObject({
+      id: "entity.cow_moody.ambient",
+      subtitle: "Cow moos",
+      variants: [
+        expect.objectContaining({
+          soundPath: "mob/cow/moody/ambient1",
+          hash: moodyHash,
+        }),
+      ],
+    });
+  });
 });
 
 function createHttpClient(responses: Record<string, unknown>): HttpClient {
