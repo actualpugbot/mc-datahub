@@ -620,7 +620,7 @@ export class TreeFeaturesExtractor {
         if (!(await fileExists(providerPath))) {
           warnings.push(`Number provider ${key} was not found under ${NUMBER_PROVIDER_DIR}.`);
         } else {
-          value = this.evaluateNumberProvider(await readJsonFile<unknown>(providerPath), kind);
+          value = await this.evaluateNumberProvider(root, await readJsonFile<unknown>(providerPath), kind);
           if (value === undefined) {
             warnings.push(`Number provider ${key} has a shape the ${kind} reader does not understand.`);
           }
@@ -658,18 +658,20 @@ export class TreeFeaturesExtractor {
    * burn ticks for fuel (`on_false` of the fast-cooking conditional), or the chance a compost layer
    * is added (the weight fraction of non-zero entries in the default weighted list; the
    * empty-composter always-fills special case is deliberately ignored to keep the old semantics).
+   *
+   * Fuel providers are evaluated as a small expression tree: 26.3-snapshot-8 wrote plain numbers
+   * under `on_false`/`on_true`, while snapshot-9 nests `minecraft:product` (and friends) whose
+   * `operands` mix literals with `minecraft:<key>` references to sibling provider files such as
+   * `cooking/normal_burn_time_multiplier` (1.0). References are read from `NUMBER_PROVIDER_DIR`.
    */
-  private evaluateNumberProvider(raw: unknown, kind: "fuel" | "compost"): number | undefined {
+  private async evaluateNumberProvider(root: string, raw: unknown, kind: "fuel" | "compost"): Promise<number | undefined> {
+    if (kind === "fuel") {
+      return this.evaluateFuelProvider(root, raw, 0);
+    }
     if (typeof raw === "number") {
-      return kind === "compost" ? (raw > 0 ? 1 : 0) : raw;
+      return raw > 0 ? 1 : 0;
     }
     if (!isRecord(raw)) {
-      return undefined;
-    }
-    if (kind === "fuel") {
-      if (raw.type === "minecraft:conditional" && typeof raw.on_false === "number") {
-        return raw.on_false;
-      }
       return undefined;
     }
     const base = raw.type === "minecraft:number_dispatcher" ? raw.default : raw;
@@ -691,6 +693,60 @@ export class TreeFeaturesExtractor {
       return total > 0 ? filled / total : undefined;
     }
     return undefined;
+  }
+
+  /**
+   * Evaluates a fuel number provider to standard-furnace burn ticks. Handles literals,
+   * `minecraft:<key>` references to sibling provider files, the fast-cooking conditional (takes
+   * `on_false`, the standard furnace branch), and the arithmetic providers `product`, `sum`,
+   * `minimum`, `maximum` and `average` over `operands` (snapshot-8's `sum` spelled it `summands`).
+   * Anything else, or a reference cycle, yields undefined so the caller can warn.
+   */
+  private async evaluateFuelProvider(root: string, raw: unknown, depth: number): Promise<number | undefined> {
+    if (depth > 8) {
+      return undefined;
+    }
+    if (typeof raw === "number") {
+      return raw;
+    }
+    if (typeof raw === "string") {
+      const key = raw.startsWith("minecraft:") ? raw.slice("minecraft:".length) : raw;
+      const providerPath = join(root, NUMBER_PROVIDER_DIR, `${key}.json`);
+      if (!(await fileExists(providerPath))) {
+        return undefined;
+      }
+      return this.evaluateFuelProvider(root, await readJsonFile<unknown>(providerPath), depth + 1);
+    }
+    if (!isRecord(raw)) {
+      return undefined;
+    }
+    if (raw.type === "minecraft:conditional") {
+      return this.evaluateFuelProvider(root, raw.on_false, depth + 1);
+    }
+    if (raw.type === "minecraft:constant") {
+      return this.evaluateFuelProvider(root, raw.value, depth + 1);
+    }
+    const arithmetic: Record<string, (values: number[]) => number> = {
+      "minecraft:product": (values) => values.reduce((acc, value) => acc * value, 1),
+      "minecraft:sum": (values) => values.reduce((acc, value) => acc + value, 0),
+      "minecraft:minimum": (values) => Math.min(...values),
+      "minecraft:maximum": (values) => Math.max(...values),
+      "minecraft:average": (values) => values.reduce((acc, value) => acc + value, 0) / values.length,
+    };
+    const fold = typeof raw.type === "string" ? arithmetic[raw.type] : undefined;
+    const operands = Array.isArray(raw.operands) ? raw.operands : Array.isArray(raw.summands) ? raw.summands : undefined;
+    if (!fold || !operands || operands.length === 0) {
+      return undefined;
+    }
+    const values: number[] = [];
+    for (const operand of operands) {
+      const value = await this.evaluateFuelProvider(root, operand, depth + 1);
+      if (value === undefined) {
+        return undefined;
+      }
+      values.push(value);
+    }
+    return fold(values);
   }
 
   private async blockstateExists(root: string, bareId: string): Promise<boolean> {
