@@ -1042,12 +1042,35 @@ function inferBlockRenderLayer(
   return "solid";
 }
 
+/**
+ * The blocks BlockColors registers `foliage()` for, listed the way the client
+ * lists them. A substring rule over "leaves" is wrong: cherry, azalea,
+ * flowering azalea, pale oak and the three poplars ship pre-colored textures
+ * and get no color provider at all, so tinting them multiplies finished art by
+ * a biome green. Birch and spruce are foliage-typed here and carry their fixed
+ * FoliageColor constants in the consumer.
+ */
+const FOLIAGE_TINTED_BLOCKS = new Set([
+  "acacia_leaves",
+  "birch_leaves",
+  "dark_oak_leaves",
+  "jungle_leaves",
+  "mangrove_leaves",
+  "oak_leaves",
+  "spruce_leaves",
+  "vine",
+]);
+
 function inferBlockTintType(id: string): string | undefined {
+  const name = id.replace(/^minecraft:/, "");
+  if (FOLIAGE_TINTED_BLOCKS.has(name)) {
+    return "foliage";
+  }
+  if (name === "leaf_litter") {
+    return "dry_foliage";
+  }
   if (id.includes("grass") || id.includes("fern") || id.includes("vine")) {
     return "grass";
-  }
-  if (id.includes("leaves") || id.includes("foliage")) {
-    return "foliage";
   }
   if (id.includes("water")) {
     return "water";
