@@ -24,10 +24,20 @@ const COMPOSTER_SOURCE = "net/minecraft/world/level/block/ComposterBlock.java";
 // 26.3 snapshots moved fuel and compost onto per-item Item.Properties calls that reference
 // data-driven number providers, replacing FuelValues.java and the COMPOSTABLES bootstrap.
 const ITEMS_SOURCE = "net/minecraft/world/item/Items.java";
-const NUMBER_PROVIDERS_SOURCE = "net/minecraft/world/level/storage/loot/providers/number/NumberProviders.java";
-const NUMBER_PROVIDER_DIR = "data/minecraft/number_provider";
+// 26.3-pre-1 renamed NumberProviders to ContextIntProviders and split the datapack directory into
+// context_int_provider / context_float_provider; both spellings are probed so older versions still run.
+const NUMBER_PROVIDERS_SOURCES = [
+  "net/minecraft/world/level/storage/loot/providers/number/ints/ContextIntProviders.java",
+  "net/minecraft/world/level/storage/loot/providers/number/NumberProviders.java",
+];
+const NUMBER_PROVIDER_DIRS = ["data/minecraft/context_int_provider", "data/minecraft/number_provider"];
 /** 26.3 snapshots renamed worldgen/configured_feature to worldgen/feature; the extractor probes both. */
 const CONFIGURED_FEATURE_DIRS = ["data/minecraft/worldgen/feature", "data/minecraft/worldgen/configured_feature"];
+/**
+ * 26.3-pre-1 lifted the inline state providers out of tree features into a registry, so a feature's
+ * decorator now says `"provider": "minecraft:podzol_beneath_tree"` instead of carrying the block.
+ */
+const BLOCK_STATE_PROVIDER_DIR = "data/minecraft/worldgen/block_state_provider";
 const ITEM_TAG_DIR = "data/minecraft/tags/item";
 const BLOCKSTATE_DIR = "assets/minecraft/blockstates";
 const LANG_PATH = "assets/minecraft/lang/en_us.json";
@@ -93,6 +103,7 @@ interface RawConfiguredFeature {
 export class TreeFeaturesExtractor {
   private displayNames = new Map<string, string>();
   private tagCache = new Map<string, string[]>();
+  private blockStateProviders: Map<string, string> | undefined;
   private featureDir = CONFIGURED_FEATURE_DIRS[CONFIGURED_FEATURE_DIRS.length - 1]!;
 
   constructor(private readonly logger: Logger) {}
@@ -592,16 +603,18 @@ export class TreeFeaturesExtractor {
     const values = new Map<string, number>();
 
     const itemsPath = join(root, ITEMS_SOURCE);
-    const providersPath = join(root, NUMBER_PROVIDERS_SOURCE);
-    if (!(await fileExists(itemsPath)) || !(await fileExists(providersPath))) {
+    const providersSourcePath = await firstExisting(root, NUMBER_PROVIDERS_SOURCES);
+    const providerDir = await firstExistingDir(root, NUMBER_PROVIDER_DIRS);
+    if (!(await fileExists(itemsPath)) || !providersSourcePath || !providerDir) {
       warnings.push(
-        `Neither ${kind === "fuel" ? FUEL_SOURCE : "ComposterBlock COMPOSTABLES"} nor the Items.java/NumberProviders.java pair was found; ${kind} values omitted.`,
+        `Neither ${kind === "fuel" ? FUEL_SOURCE : "ComposterBlock COMPOSTABLES"} nor the Items.java/ContextIntProviders.java pair was found; ${kind} values omitted.`,
       );
       return values;
     }
+    const providersClass = providersSourcePath.endsWith("ContextIntProviders.java") ? "ContextIntProviders" : "NumberProviders";
 
     const providerKeys = new Map<string, string>();
-    const providersSource = await readFile(providersPath, "utf8");
+    const providersSource = await readFile(join(root, providersSourcePath), "utf8");
     for (const match of providersSource.matchAll(/(\w+)\s*=\s*createKey\("([^"]+)"\)/g)) {
       providerKeys.set(match[1]!, match[2]!);
     }
@@ -614,13 +627,13 @@ export class TreeFeaturesExtractor {
       let value: number | undefined;
       const key = providerKeys.get(symbol);
       if (!key) {
-        warnings.push(`NumberProviders.${symbol} was not found in ${NUMBER_PROVIDERS_SOURCE}.`);
+        warnings.push(`${providersClass}.${symbol} was not found in ${providersSourcePath}.`);
       } else {
-        const providerPath = join(root, NUMBER_PROVIDER_DIR, `${key}.json`);
+        const providerPath = join(root, providerDir, `${key}.json`);
         if (!(await fileExists(providerPath))) {
-          warnings.push(`Number provider ${key} was not found under ${NUMBER_PROVIDER_DIR}.`);
+          warnings.push(`Number provider ${key} was not found under ${providerDir}.`);
         } else {
-          value = await this.evaluateNumberProvider(root, await readJsonFile<unknown>(providerPath), kind);
+          value = await this.evaluateNumberProvider(root, providerDir, await readJsonFile<unknown>(providerPath), kind);
           if (value === undefined) {
             warnings.push(`Number provider ${key} has a shape the ${kind} reader does not understand.`);
           }
@@ -631,7 +644,7 @@ export class TreeFeaturesExtractor {
     };
 
     const itemsSource = await readFile(itemsPath, "utf8");
-    const call = new RegExp(`\\.${method}\\(NumberProviders\\.(\\w+)\\)`);
+    const call = new RegExp(`\\.${method}\\(${providersClass}\\.(\\w+)\\)`);
     for (const registration of itemsSource.matchAll(/public static final Item (\w+) =([^;]*);/g)) {
       const providerRef = registration[2]!.match(call);
       if (!providerRef) {
@@ -644,11 +657,11 @@ export class TreeFeaturesExtractor {
     }
 
     if (values.size === 0) {
-      warnings.push(`No .${method}(NumberProviders.*) item registrations were parsed from ${ITEMS_SOURCE}.`);
+      warnings.push(`No .${method}(${providersClass}.*) item registrations were parsed from ${ITEMS_SOURCE}.`);
     } else {
       pushUnique(sourcePaths, ITEMS_SOURCE);
-      pushUnique(sourcePaths, NUMBER_PROVIDERS_SOURCE);
-      pushUnique(sourcePaths, NUMBER_PROVIDER_DIR);
+      pushUnique(sourcePaths, providersSourcePath);
+      pushUnique(sourcePaths, providerDir);
     }
     return values;
   }
@@ -664,9 +677,14 @@ export class TreeFeaturesExtractor {
    * `operands` mix literals with `minecraft:<key>` references to sibling provider files such as
    * `cooking/normal_burn_time_multiplier` (1.0). References are read from `NUMBER_PROVIDER_DIR`.
    */
-  private async evaluateNumberProvider(root: string, raw: unknown, kind: "fuel" | "compost"): Promise<number | undefined> {
+  private async evaluateNumberProvider(
+    root: string,
+    providerDir: string,
+    raw: unknown,
+    kind: "fuel" | "compost",
+  ): Promise<number | undefined> {
     if (kind === "fuel") {
-      return this.evaluateFuelProvider(root, raw, 0);
+      return this.evaluateFuelProvider(root, providerDir, raw, 0);
     }
     if (typeof raw === "number") {
       return raw > 0 ? 1 : 0;
@@ -702,7 +720,12 @@ export class TreeFeaturesExtractor {
    * `minimum`, `maximum` and `average` over `operands` (snapshot-8's `sum` spelled it `summands`).
    * Anything else, or a reference cycle, yields undefined so the caller can warn.
    */
-  private async evaluateFuelProvider(root: string, raw: unknown, depth: number): Promise<number | undefined> {
+  private async evaluateFuelProvider(
+    root: string,
+    providerDir: string,
+    raw: unknown,
+    depth: number,
+  ): Promise<number | undefined> {
     if (depth > 8) {
       return undefined;
     }
@@ -711,20 +734,30 @@ export class TreeFeaturesExtractor {
     }
     if (typeof raw === "string") {
       const key = raw.startsWith("minecraft:") ? raw.slice("minecraft:".length) : raw;
-      const providerPath = join(root, NUMBER_PROVIDER_DIR, `${key}.json`);
+      const providerPath = join(root, providerDir, `${key}.json`);
       if (!(await fileExists(providerPath))) {
         return undefined;
       }
-      return this.evaluateFuelProvider(root, await readJsonFile<unknown>(providerPath), depth + 1);
+      return this.evaluateFuelProvider(root, providerDir, await readJsonFile<unknown>(providerPath), depth + 1);
     }
     if (!isRecord(raw)) {
       return undefined;
     }
     if (raw.type === "minecraft:conditional") {
-      return this.evaluateFuelProvider(root, raw.on_false, depth + 1);
+      return this.evaluateFuelProvider(root, providerDir, raw.on_false, depth + 1);
     }
     if (raw.type === "minecraft:constant") {
-      return this.evaluateFuelProvider(root, raw.value, depth + 1);
+      return this.evaluateFuelProvider(root, providerDir, raw.value, depth + 1);
+    }
+    // 26.3-pre-1 states cooking times as `div(<base ticks>, <burn-time reduction factor>)`, where the
+    // standard-furnace factor is 1 and the fast branch is 2 — the inverse spelling of snapshot-9's product.
+    if (raw.type === "minecraft:div" || raw.type === "minecraft:sub") {
+      const left = await this.evaluateFuelProvider(root, providerDir, raw.left, depth + 1);
+      const right = await this.evaluateFuelProvider(root, providerDir, raw.right, depth + 1);
+      if (left === undefined || right === undefined || (raw.type === "minecraft:div" && right === 0)) {
+        return undefined;
+      }
+      return raw.type === "minecraft:div" ? left / right : left - right;
     }
     const arithmetic: Record<string, (values: number[]) => number> = {
       "minecraft:product": (values) => values.reduce((acc, value) => acc * value, 1),
@@ -740,7 +773,7 @@ export class TreeFeaturesExtractor {
     }
     const values: number[] = [];
     for (const operand of operands) {
-      const value = await this.evaluateFuelProvider(root, operand, depth + 1);
+      const value = await this.evaluateFuelProvider(root, providerDir, operand, depth + 1);
       if (value === undefined) {
         return undefined;
       }
@@ -851,6 +884,34 @@ export class TreeFeaturesExtractor {
   }
 
   /** Reads one configured feature JSON and summarizes its trunk/foliage/decorator shape. */
+  /**
+   * Reads `worldgen/block_state_provider/*.json` into key → block id, so a named provider reference
+   * resolves to the same block the pre-registry versions inlined. Empty on versions without the dir.
+   */
+  private async loadBlockStateProviders(root: string): Promise<Map<string, string>> {
+    if (this.blockStateProviders) {
+      return this.blockStateProviders;
+    }
+    const providers = new Map<string, string>();
+    let files: string[] = [];
+    try {
+      files = await readdir(join(root, BLOCK_STATE_PROVIDER_DIR));
+    } catch {
+      // Pre-26.3-pre-1 versions inline every provider; nothing to preload.
+    }
+    for (const file of files) {
+      if (!file.endsWith(".json")) {
+        continue;
+      }
+      const block = findStateName(await readJsonFile<unknown>(join(root, BLOCK_STATE_PROVIDER_DIR, file)));
+      if (block) {
+        providers.set(`minecraft:${file.slice(0, -".json".length)}`, block);
+      }
+    }
+    this.blockStateProviders = providers;
+    return providers;
+  }
+
   private async readFeatureShape(root: string, featureKey: string, warnings: string[]): Promise<TreeFeatureShape | undefined> {
     const relativePath = `${this.featureDir}/${featureKey}.json`;
     const path = join(root, relativePath);
@@ -897,7 +958,8 @@ export class TreeFeaturesExtractor {
         shape.rootPlacerType = rootPlacer.type;
       }
       if (Array.isArray(config.decorators)) {
-        shape.decorators = config.decorators.filter(isRecord).map((decorator) => this.decorator(decorator));
+        const providers = await this.loadBlockStateProviders(root);
+        shape.decorators = config.decorators.filter(isRecord).map((decorator) => this.decorator(decorator, providers));
       }
     } else if (shape.featureType === "minecraft:huge_fungus") {
       shape.trunkBlock = stateName(config.stem_state);
@@ -935,8 +997,8 @@ export class TreeFeaturesExtractor {
     };
   }
 
-  private decorator(raw: Record<string, unknown>): TreeFeatureDecorator {
-    const block = findStateName(raw);
+  private decorator(raw: Record<string, unknown>, providers: ReadonlyMap<string, string>): TreeFeatureDecorator {
+    const block = (typeof raw.provider === "string" ? providers.get(raw.provider) : undefined) ?? findStateName(raw);
     return {
       type: typeof raw.type === "string" ? raw.type : "unknown",
       ...(typeof raw.probability === "number" ? { probability: raw.probability } : {}),
@@ -1060,11 +1122,34 @@ function evaluateJavaIntExpression(expression: string, baseUnit: number): number
 }
 
 /** Extracts the block id from a state provider (simple providers directly; rule-based via its first rule). */
+/** First of `candidates` (relative to `root`) that exists as a file, or undefined. */
+async function firstExisting(root: string, candidates: readonly string[]): Promise<string | undefined> {
+  for (const candidate of candidates) {
+    if (await fileExists(join(root, candidate))) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/** First of `candidates` (relative to `root`) that exists as a readable directory, or undefined. */
+async function firstExistingDir(root: string, candidates: readonly string[]): Promise<string | undefined> {
+  for (const candidate of candidates) {
+    try {
+      await readdir(join(root, candidate));
+      return candidate;
+    } catch {
+      // try the next spelling
+    }
+  }
+  return undefined;
+}
+
 function providerBlock(provider: unknown): string | undefined {
   if (!isRecord(provider)) {
     return undefined;
   }
-  const direct = stateName(provider.state);
+  const direct = stateName(provider.state) ?? stateName(provider);
   if (direct) {
     return direct;
   }
@@ -1079,7 +1164,15 @@ function stateName(state: unknown): string | undefined {
   if (typeof state === "string") {
     return state.includes("[") ? state.slice(0, state.indexOf("[")) : state;
   }
-  return isRecord(state) && typeof state.Name === "string" ? state.Name : undefined;
+  if (!isRecord(state)) {
+    return undefined;
+  }
+  if (typeof state.Name === "string") {
+    return state.Name;
+  }
+  // 26.3-pre-1 dropped the simple_state_provider wrapper and writes the blockstate inline as
+  // `{ "id": "minecraft:oak_log", "properties": {...} }`.
+  return typeof state.id === "string" ? state.id : undefined;
 }
 
 /** Depth-first search for the first `state.Name` inside a nested provider/decorator structure. */
@@ -1096,7 +1189,8 @@ function findStateName(value: unknown): string | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const direct = stateName(value.state);
+  // `state` in the wrapped form, or the record itself in 26.3-pre-1's inline `{ id, properties }`.
+  const direct = stateName(value.state) ?? stateName(value);
   if (direct) {
     return direct;
   }
