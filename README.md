@@ -113,7 +113,7 @@ If you want an HTTP interface instead of reading files directly, the API exposes
 
 - `GET /versions/:version` — dataset summary (per-collection counts, provenance, generation time)
 - `GET /versions/:version/dataset` — the full combined dataset in one response
-- `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for counts only)
+- `GET /versions/:version/diff/:toVersion` — structured diff (`?summary=true` for per-collection counts plus whole-object dataset statuses)
 - `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,sulfur-cube,tree-features,fishing-odds,loot-odds,ore-generation,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-sounds,mob-profiles}`
 - `GET /versions/:version/{blocks,items,item-stats,block-properties,recipes,models,textures,enchantments,anvil-mechanics,tags,loot-tables,advancements,translations,palettes,mob-images,mob-models,mob-animations,mob-sounds}`
 - `GET /versions/:version/assets/<dataset-relative-path>` — serves extracted binary assets (texture/mob PNGs, dumped `.ogg`), e.g. `assets/images/block/oak_planks.png`

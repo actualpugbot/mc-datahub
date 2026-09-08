@@ -1887,10 +1887,20 @@ export interface CollectionDiff<T> {
   unchangedCount: number;
 }
 
-export interface VersionDiff {
-  fromVersion: string;
-  toVersion: string;
-  generatedAt: string;
+export type ObjectDiffStatus = "added" | "removed" | "changed" | "unchanged";
+
+/**
+ * A dataset field with no stable per-record id — a single object rather than a keyed collection.
+ * `changedFields` names the object's own top-level keys whose canonical JSON differs, which points at
+ * what to look at without embedding two full copies of datasets like `renderData` in every diff.
+ */
+export interface ObjectDiff {
+  status: ObjectDiffStatus;
+  changedFields: string[];
+}
+
+/** Dataset fields compared record-by-record on a stable key. */
+export interface VersionDiffCollections {
   blocks: CollectionDiff<BlockDefinition>;
   items: CollectionDiff<ItemDefinition>;
   recipes: CollectionDiff<RecipeDefinition>;
@@ -1907,9 +1917,53 @@ export interface VersionDiff {
   biomes: CollectionDiff<BiomeDefinition>;
   mobImages: CollectionDiff<MobImageDefinition>;
   mobModels: CollectionDiff<MobModelDefinition>;
+  blockEntityModels: CollectionDiff<MobModelDefinition>;
   mobAnimations: CollectionDiff<MobAnimationDefinition>;
   mobSounds: CollectionDiff<MobSoundDefinition>;
   mobProfiles: CollectionDiff<MobProfileDefinition>;
+  structures: CollectionDiff<StructureDefinition>;
+  templatePools: CollectionDiff<TemplatePoolDefinition>;
+  processorLists: CollectionDiff<ProcessorListDefinition>;
+  structureTemplates: CollectionDiff<StructureTemplateDefinition>;
+}
+
+/** Dataset fields compared as whole objects. */
+export interface VersionDiffObjects {
+  anvilMechanics: ObjectDiff;
+  sulfurCube: ObjectDiff;
+  treeFeatures: ObjectDiff;
+  fishingOdds: ObjectDiff;
+  lootOdds: ObjectDiff;
+  banners: ObjectDiff;
+  villagerTrades: ObjectDiff;
+  oreGeneration: ObjectDiff;
+  renderData: ObjectDiff;
+  mobSoundMinecraftWiki: ObjectDiff;
+  resourcePack: ObjectDiff;
+}
+
+/**
+ * Dataset fields deliberately not compared: they identify the run rather than describe the game.
+ * `datasetValidation` is a report about the extraction, so it changes on every run by construction.
+ */
+export type UncomparedDatasetField = "version" | "generatedAt" | "provenance" | "datasetValidation";
+
+type ComparedDatasetField = keyof VersionDiffCollections | keyof VersionDiffObjects;
+
+/**
+ * Compile-time guard against the diff silently falling behind the dataset. Adding a field to
+ * `VersionDataset` without also adding it to `VersionDiffCollections`, `VersionDiffObjects` or
+ * `UncomparedDatasetField` leaves it in this `Exclude`, which then fails `extends never`.
+ */
+type AssertNoUnclassifiedDatasetFields<T extends never> = T;
+export type _EveryDatasetFieldIsClassified = AssertNoUnclassifiedDatasetFields<
+  Exclude<keyof VersionDataset, ComparedDatasetField | UncomparedDatasetField>
+>;
+
+export interface VersionDiff extends VersionDiffCollections, VersionDiffObjects {
+  fromVersion: string;
+  toVersion: string;
+  generatedAt: string;
 }
 
 export interface ToolStepResult {

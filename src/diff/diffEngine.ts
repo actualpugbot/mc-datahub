@@ -16,9 +16,14 @@ import type {
   MobModelDefinition,
   MobProfileDefinition,
   MobSoundDefinition,
+  ObjectDiff,
   PaletteDefinition,
+  ProcessorListDefinition,
   RecipeDefinition,
+  StructureDefinition,
+  StructureTemplateDefinition,
   TagDefinition,
+  TemplatePoolDefinition,
   TextureDefinition,
   TranslationEntry,
   VersionDataset,
@@ -35,6 +40,8 @@ export class DiffEngine {
       fromVersion: from.version,
       toVersion: to.version,
       generatedAt: new Date().toISOString(),
+
+      // Keyed collections.
       blocks: this.diffCollection<BlockDefinition>(from.blocks, to.blocks),
       items: this.diffCollection<ItemDefinition>(from.items, to.items),
       recipes: this.diffCollection<RecipeDefinition>(from.recipes, to.recipes),
@@ -50,10 +57,31 @@ export class DiffEngine {
       translations: this.diffCollection<TranslationEntry>(from.translations, to.translations, (entry) => entry.key),
       biomes: this.diffCollection<BiomeDefinition>(from.biomes, to.biomes),
       mobImages: this.diffCollection<MobImageDefinition>(from.mobImages, to.mobImages),
-      mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
       mobModels: this.diffCollection<MobModelDefinition>(from.mobModels, to.mobModels),
-      mobProfiles: this.diffCollection<MobProfileDefinition>(from.mobProfiles ?? [], to.mobProfiles ?? []),
+      blockEntityModels: this.diffCollection<MobModelDefinition>(from.blockEntityModels ?? [], to.blockEntityModels ?? []),
       mobAnimations: this.diffCollection<MobAnimationDefinition>(from.mobAnimations ?? [], to.mobAnimations ?? []),
+      mobSounds: this.diffCollection<MobSoundDefinition>(from.mobSounds, to.mobSounds),
+      mobProfiles: this.diffCollection<MobProfileDefinition>(from.mobProfiles ?? [], to.mobProfiles ?? []),
+      structures: this.diffCollection<StructureDefinition>(from.structures ?? [], to.structures ?? []),
+      templatePools: this.diffCollection<TemplatePoolDefinition>(from.templatePools ?? [], to.templatePools ?? []),
+      processorLists: this.diffCollection<ProcessorListDefinition>(from.processorLists ?? [], to.processorLists ?? []),
+      structureTemplates: this.diffCollection<StructureTemplateDefinition>(
+        from.structureTemplates ?? [],
+        to.structureTemplates ?? [],
+      ),
+
+      // Whole-object datasets: no stable per-record id to key on.
+      anvilMechanics: this.diffObject(from.anvilMechanics, to.anvilMechanics),
+      sulfurCube: this.diffObject(from.sulfurCube, to.sulfurCube),
+      treeFeatures: this.diffObject(from.treeFeatures, to.treeFeatures),
+      fishingOdds: this.diffObject(from.fishingOdds, to.fishingOdds),
+      lootOdds: this.diffObject(from.lootOdds, to.lootOdds),
+      banners: this.diffObject(from.banners, to.banners),
+      villagerTrades: this.diffObject(from.villagerTrades, to.villagerTrades),
+      oreGeneration: this.diffObject(from.oreGeneration, to.oreGeneration),
+      renderData: this.diffObject(from.renderData, to.renderData),
+      mobSoundMinecraftWiki: this.diffObject(from.mobSoundMinecraftWiki, to.mobSoundMinecraftWiki),
+      resourcePack: this.diffObject(from.resourcePack, to.resourcePack),
     };
   }
 
@@ -92,6 +120,48 @@ export class DiffEngine {
       unchangedCount,
     };
   }
+
+  /**
+   * Datasets like `treeFeatures` and `lootOdds` are one object, not a keyed collection. Reporting the
+   * status plus the object's own changed top-level keys says where to look without embedding two full
+   * copies of something as large as `renderData` in every diff.
+   */
+  private diffObject(before: unknown, after: unknown): ObjectDiff {
+    if (before === undefined && after === undefined) {
+      return { status: "unchanged", changedFields: [] };
+    }
+    if (before === undefined) {
+      return { status: "added", changedFields: topLevelKeys(after) };
+    }
+    if (after === undefined) {
+      return { status: "removed", changedFields: topLevelKeys(before) };
+    }
+    if (stableJsonHash(before) === stableJsonHash(after)) {
+      return { status: "unchanged", changedFields: [] };
+    }
+
+    return { status: "changed", changedFields: changedTopLevelFields(before, after) };
+  }
+}
+
+function topLevelKeys(value: unknown): string[] {
+  return isPlainObject(value) ? Object.keys(value).sort((left, right) => left.localeCompare(right)) : [];
+}
+
+function changedTopLevelFields(before: unknown, after: unknown): string[] {
+  if (!isPlainObject(before) || !isPlainObject(after)) {
+    // A scalar or array has no named fields to report; `status` already says it changed.
+    return [];
+  }
+
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...keys]
+    .filter((key) => stableJsonHash(before[key]) !== stableJsonHash(after[key]))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function defaultKeyOf(entry: unknown): string {
