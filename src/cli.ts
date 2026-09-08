@@ -7,7 +7,7 @@ import { ZipArchiveSource } from "./archive/zipArchiveSource.js";
 import { buildApiServer } from "./api/server.js";
 import { fileExists, readJsonFile, writeJsonFile } from "./core/fs.js";
 import { datasetVersionDir, versionDownloadsDir } from "./core/paths.js";
-import type { VersionDataset, VersionMetadata } from "./domain/types.js";
+import type { VersionDataset, VersionDiff, VersionMetadata } from "./domain/types.js";
 import { structureFileWrites } from "./datasets/datasetStore.js";
 import { buildBanners } from "./extraction/banners.js";
 import { buildJukeboxSongs } from "./extraction/jukeboxSongs.js";
@@ -170,24 +170,7 @@ async function main(): Promise<void> {
         JSON.stringify(
           {
             outputPath,
-            diffSummary: {
-              blocks: summarizeCollection(diff.blocks),
-              items: summarizeCollection(diff.items),
-              itemStats: summarizeCollection(diff.itemStats),
-              blockProperties: summarizeCollection(diff.blockProperties),
-              recipes: summarizeCollection(diff.recipes),
-              textures: summarizeCollection(diff.textures),
-              models: summarizeCollection(diff.models),
-              palettes: summarizeCollection(diff.palettes),
-              enchantments: summarizeCollection(diff.enchantments),
-              tags: summarizeCollection(diff.tags),
-              lootTables: summarizeCollection(diff.lootTables),
-              advancements: summarizeCollection(diff.advancements),
-              translations: summarizeCollection(diff.translations),
-              biomes: summarizeCollection(diff.biomes),
-              mobImages: summarizeCollection(diff.mobImages),
-              mobSounds: summarizeCollection(diff.mobSounds),
-            },
+            ...summarizeDiff(diff),
           },
           null,
           2,
@@ -607,13 +590,29 @@ async function main(): Promise<void> {
   await program.parseAsync();
 }
 
-function summarizeCollection(collection: { added: unknown[]; removed: unknown[]; changed: unknown[]; unchangedCount: number }) {
-  return {
-    added: collection.added.length,
-    removed: collection.removed.length,
-    changed: collection.changed.length,
-    unchanged: collection.unchangedCount,
-  };
+/**
+ * Counts per keyed collection, plus the status of each whole-object dataset. Driven off the diff's own
+ * keys, so a collection added to DiffEngine is reported here without a second edit.
+ */
+function summarizeDiff(diff: VersionDiff) {
+  const { fromVersion: _fromVersion, toVersion: _toVersion, generatedAt: _generatedAt, ...fields } = diff;
+  const diffSummary: Record<string, unknown> = {};
+  const changedDatasets: Record<string, unknown> = {};
+
+  for (const [name, value] of Object.entries(fields)) {
+    if ("added" in value) {
+      diffSummary[name] = {
+        added: value.added.length,
+        removed: value.removed.length,
+        changed: value.changed.length,
+        unchanged: value.unchangedCount,
+      };
+    } else if (value.status !== "unchanged") {
+      changedDatasets[name] = value;
+    }
+  }
+
+  return { diffSummary, changedDatasets };
 }
 
 main().catch((error) => {

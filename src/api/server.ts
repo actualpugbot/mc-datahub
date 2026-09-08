@@ -9,7 +9,7 @@ import {
 } from "./mobSoundExplorerPage.js";
 import { buildOpenApiDocument } from "./openapi.js";
 import { normalizeMinecraftId } from "../extraction/normalizers.js";
-import { datasetVersionDir } from "../core/paths.js";
+import { datasetVersionDir, isSafeVersionSegment } from "../core/paths.js";
 import type { DatasetStore } from "../datasets/datasetStore.js";
 import type { DiffEngine } from "../diff/diffEngine.js";
 import type { AppConfig } from "../config.js";
@@ -120,7 +120,7 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore, di
       }
 
       if (segments[0] === "versions" && segments.length >= 2) {
-        const version = decodeURIComponent(segments[1] ?? "");
+        const version = requireVersionSegment(decodeURIComponent(segments[1] ?? ""));
 
         if (segments.length === 2) {
           const dataset = await datasetStore.loadDataset(version);
@@ -134,7 +134,7 @@ export function buildApiServer(config: AppConfig, datasetStore: DatasetStore, di
         }
 
         if (segments.length === 4 && segments[2] === "diff") {
-          const toVersion = decodeURIComponent(segments[3] ?? "");
+          const toVersion = requireVersionSegment(decodeURIComponent(segments[3] ?? ""));
           const [from, to] = await Promise.all([datasetStore.loadDataset(version), datasetStore.loadDataset(toVersion)]);
           const diff = diffEngine.compare(from, to);
           if (requestUrl.searchParams.get("summary") === "true") {
@@ -365,32 +365,33 @@ function summarizeDiff(diff: ReturnType<DiffEngine["compare"]>): Record<string, 
     unchanged: collection.unchangedCount,
   });
 
-  return {
-    fromVersion: diff.fromVersion,
-    toVersion: diff.toVersion,
-    generatedAt: diff.generatedAt,
-    summary: {
-      blocks: summarize(diff.blocks),
-      items: summarize(diff.items),
-      itemStats: summarize(diff.itemStats),
-      blockProperties: summarize(diff.blockProperties),
-      recipes: summarize(diff.recipes),
-      models: summarize(diff.models),
-      textures: summarize(diff.textures),
-      enchantments: summarize(diff.enchantments),
-      tags: summarize(diff.tags),
-      lootTables: summarize(diff.lootTables),
-      advancements: summarize(diff.advancements),
-      translations: summarize(diff.translations),
-      palettes: summarize(diff.palettes),
-      biomes: summarize(diff.biomes),
-      mobImages: summarize(diff.mobImages),
-      mobModels: summarize(diff.mobModels),
-      mobAnimations: summarize(diff.mobAnimations),
-      mobSounds: summarize(diff.mobSounds),
-      mobProfiles: summarize(diff.mobProfiles),
-    },
-  };
+  const { fromVersion, toVersion, generatedAt, ...fields } = diff;
+  const collections: Record<string, unknown> = {};
+  const objects: Record<string, unknown> = {};
+
+  // Driven off the diff's own keys so a collection added to DiffEngine shows up here without a second edit.
+  for (const [name, value] of Object.entries(fields)) {
+    if ("added" in value) {
+      collections[name] = summarize(value);
+    } else {
+      objects[name] = value;
+    }
+  }
+
+  return { fromVersion, toVersion, generatedAt, summary: collections, objects };
+}
+
+/**
+ * Every `/versions/<version>/...` route eventually joins this segment onto a workspace path, so it is
+ * checked once here rather than at each join. A rejected id is the caller's mistake, not a missing
+ * dataset, so it answers 400 instead of falling through to the 404 or 500 paths.
+ */
+function requireVersionSegment(version: string): string {
+  if (!isSafeVersionSegment(version)) {
+    throw new ApiRequestError(400, `Invalid version id: ${version}`);
+  }
+
+  return version;
 }
 
 async function serveAsset(
@@ -404,7 +405,10 @@ async function serveAsset(
   const relativePath = pathSegments.map((segment) => decodeURIComponent(segment)).join("/");
   const resolvedPath = resolve(datasetDir, relativePath);
 
-  if (resolvedPath !== datasetDir && !resolvedPath.startsWith(datasetDir + sep)) {
+  // Safe to anchor on datasetDir now that `version` is checked to be a single path segment: the fence
+  // can no longer be moved by the request. Anchoring on the datasets root instead would leave this
+  // open to reads across sibling versions.
+  if (!resolvedPath.startsWith(datasetDir + sep)) {
     sendJson(response, 403, { error: "Asset path escapes the dataset directory." });
     return;
   }

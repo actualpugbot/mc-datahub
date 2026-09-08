@@ -151,14 +151,22 @@ export function buildOpenApiDocument(config: AppConfig): Record<string, unknown>
       get: {
         summary: "Dataset summary: per-collection counts, provenance, and generation time.",
         parameters: [versionParam],
-        responses: { "200": { description: "Summary." }, "404": { description: "Unknown version." } },
+        responses: {
+          "200": { description: "Summary." },
+          "400": { description: "Invalid version id." },
+          "404": { description: "Unknown version." },
+        },
       },
     },
     "/versions/{version}/dataset": {
       get: {
         summary: "The full combined dataset (every collection in one response).",
         parameters: [versionParam],
-        responses: { "200": { description: "Combined dataset." }, "404": { description: "Unknown version." } },
+        responses: {
+          "200": { description: "Combined dataset." },
+          "400": { description: "Invalid version id." },
+          "404": { description: "Unknown version." },
+        },
       },
     },
     "/versions/{version}/diff/{toVersion}": {
@@ -171,11 +179,16 @@ export function buildOpenApiDocument(config: AppConfig): Record<string, unknown>
             name: "summary",
             in: "query",
             required: false,
-            description: "When true, return only per-collection added/removed/changed counts.",
+            description:
+              "When true, return per-collection added/removed/changed counts plus the status of each whole-object dataset, instead of the full diff.",
             schema: { type: "boolean" },
           },
         ],
-        responses: { "200": { description: "Diff." }, "404": { description: "Unknown version." } },
+        responses: {
+          "200": { description: "Diff." },
+          "400": { description: "Invalid version id." },
+          "404": { description: "Unknown version." },
+        },
       },
     },
     "/versions/{version}/assets/{path}": {
@@ -193,6 +206,8 @@ export function buildOpenApiDocument(config: AppConfig): Record<string, unknown>
         ],
         responses: {
           "200": { description: "Raw asset bytes." },
+          "400": { description: "Invalid version id." },
+          "403": { description: "Asset path escapes the dataset directory." },
           "404": { description: "Asset not found." },
         },
       },
@@ -220,6 +235,7 @@ export function buildOpenApiDocument(config: AppConfig): Record<string, unknown>
             description: "Filtered, paginated collection.",
             content: { "application/json": { schema: collectionResponseSchema(collection.key) } },
           },
+          "400": { description: "Invalid version id." },
           "404": { description: "Unknown version." },
         },
       },
