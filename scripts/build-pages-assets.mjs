@@ -1,11 +1,10 @@
 /*
- * Assembles the GitHub Pages asset bundle served at
- * https://actualpugbot.github.io/mc-datahub/ for the pugtools.com mob tools
- * (Mob Sound Editor + Mob Voice Recorder).
+ * Assembles the committed pages/ asset bundle for the pugtools.com mob tools
+ * (Mob Sound Editor + Mob Voice Recorder). See docs/PAGES_ASSETS.md.
  *
  * The heavy media lives in sibling working repos (gitignored `workspace/` here,
  * and the mob-voice-over asset repo), so this copies a curated, deduped subtree
- * into a committed `pages/` directory that the Pages workflow publishes.
+ * into the committed `pages/` directory.
  *
  * Published layout (URL = origin + path):
  *   pages/index.html                      simple landing page
