@@ -9,6 +9,7 @@ import type {
   TemplatePoolDefinition,
   TemplatePoolElementDefinition,
 } from "../domain/types.js";
+import { normalizeBlockState } from "./blockState.js";
 import { decodeNbt, type NbtCompound } from "./nbt.js";
 
 const STRUCTURE_PREFIX = "data/minecraft/worldgen/structure/";
@@ -196,12 +197,8 @@ function normalizeTemplate(id: string, key: string, sourcePath: string, root: Nb
   const size = readIntTriple(root.size) ?? [0, 0, 0];
   // Templates carry either a single `palette` or a list of random `palettes`
   // (the game picks one per placement; e.g. shipwrecks pick a wood variant).
-  const rawPalettes: unknown[][] = Array.isArray(root.palettes)
-    ? (root.palettes as unknown[][])
-    : Array.isArray(root.palette)
-      ? [root.palette as unknown[]]
-      : [];
-  const palettes = rawPalettes.map((entries) => entries.map((entry) => blockstateString(entry)));
+  const rawPalettes: unknown[] = Array.isArray(root.palettes) ? root.palettes : Array.isArray(root.palette) ? [root.palette] : [];
+  const palettes = rawPalettes.map((entries, paletteIndex) => readPalette(sourcePath, paletteIndex, entries));
   const paletteBlockNames = (palettes[0] ?? []).map((state) => state.split("[", 1)[0] ?? state);
 
   const blocks: number[] = [];
@@ -217,6 +214,14 @@ function normalizeTemplate(id: string, key: string, sourcePath: string, root: Nb
     const stateIndex = typeof rawBlock.state === "number" ? rawBlock.state : -1;
     if (!pos || stateIndex < 0) {
       continue;
+    }
+
+    const shortPalette = palettes.findIndex((palette) => stateIndex >= palette.length);
+    if (shortPalette !== -1) {
+      throw new Error(
+        `Invalid structure template ${sourcePath}: block at ${pos.join(",")} uses state index ${stateIndex}, ` +
+          `but palette ${shortPalette} only has ${palettes[shortPalette]?.length} entries.`,
+      );
     }
 
     const blockName = paletteBlockNames[stateIndex] ?? "";
@@ -269,22 +274,20 @@ function normalizeJigsawBlock(
   };
 }
 
-/** Render a palette entry (`{Name, Properties}`) as `id[prop=value,...]` with sorted properties. */
-function blockstateString(entry: unknown): string {
-  if (!isNbtRecord(entry) || typeof entry.Name !== "string") {
-    return "minecraft:air";
+/** Normalize one palette; a state we cannot read fails the extraction rather than becoming air. */
+function readPalette(sourcePath: string, paletteIndex: number, entries: unknown): string[] {
+  if (!Array.isArray(entries)) {
+    throw new Error(`Invalid structure template ${sourcePath}: palette ${paletteIndex} is not a list.`);
   }
 
-  const name = normalizeId(entry.Name);
-  if (!isNbtRecord(entry.Properties)) {
-    return name;
-  }
-
-  const properties = Object.entries(entry.Properties)
-    .filter((pair): pair is [string, string] => typeof pair[1] === "string")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([property, value]) => `${property}=${value}`);
-  return properties.length > 0 ? `${name}[${properties.join(",")}]` : name;
+  return entries.map((entry, entryIndex) => {
+    try {
+      return normalizeBlockState(entry);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid block state in ${sourcePath} (palette ${paletteIndex}, entry ${entryIndex}): ${reason}`);
+    }
+  });
 }
 
 function readIntTriple(value: unknown): [number, number, number] | undefined {

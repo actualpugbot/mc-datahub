@@ -2,6 +2,7 @@ import { gzipSync } from "node:zlib";
 import { describe, expect, test } from "vitest";
 import { InMemoryArchiveSource } from "../src/archive/archiveSource.js";
 import { buildStructureData } from "../src/extraction/structures.js";
+import { normalizeBlockState } from "../src/extraction/blockState.js";
 import { decodeNbt } from "../src/extraction/nbt.js";
 
 const TAG_INT = 3;
@@ -234,5 +235,263 @@ describe("structure extraction", () => {
         selectionPriority: 7,
       },
     ]);
+  });
+});
+
+// Minecraft 26.3 writes template palettes as `{id, properties}`; older packs use
+// `{Name, Properties}` and datapacks may use bare block-id strings.
+function modernEntry(blockId: string, properties?: Record<string, string>): Buffer {
+  const entries = [namedString("id", blockId)];
+  if (properties) {
+    entries.push(
+      namedCompound(
+        "properties",
+        Object.entries(properties).map(([property, value]) => namedString(property, value)),
+      ),
+    );
+  }
+  return compoundPayload(entries);
+}
+
+function listPayload(elementType: number, payloads: Buffer[]): Buffer {
+  return Buffer.concat([Buffer.from([elementType]), int32(payloads.length), ...payloads]);
+}
+
+function blockAt(pos: [number, number, number], state: number, extra: Buffer[] = []): Buffer {
+  return compoundPayload([namedList("pos", TAG_INT, intListPayloads(pos)), namedInt("state", state), ...extra]);
+}
+
+function templateWith(paletteTags: Buffer[], blocks: Buffer[]): Buffer {
+  return gzipSync(
+    Buffer.concat([
+      Buffer.from([TAG_COMPOUND]),
+      nbtString(""),
+      compoundPayload([
+        namedList("size", TAG_INT, intListPayloads([3, 2, 1])),
+        ...paletteTags,
+        namedList("blocks", TAG_COMPOUND, blocks),
+        namedList("entities", 0, []),
+        namedInt("DataVersion", 5023),
+      ]),
+    ]),
+  );
+}
+
+async function extractTemplates(files: Record<string, Buffer>) {
+  const source = new InMemoryArchiveSource(files);
+  return buildStructureData(await source.listPaths(), source);
+}
+
+const TEMPLATE_PATH = "data/minecraft/structure/test/room.nbt";
+
+describe("block state palette formats", () => {
+  test("normalizes legacy, modern and string states to the same internal form", () => {
+    expect(normalizeBlockState({ Name: "minecraft:stone" })).toBe("minecraft:stone");
+    expect(normalizeBlockState({ Name: "minecraft:oak_stairs", Properties: { half: "bottom", facing: "east" } })).toBe(
+      "minecraft:oak_stairs[facing=east,half=bottom]",
+    );
+    expect(normalizeBlockState({ id: "minecraft:stone" })).toBe("minecraft:stone");
+    expect(normalizeBlockState({ id: "minecraft:oak_stairs", properties: { half: "bottom", facing: "east" } })).toBe(
+      "minecraft:oak_stairs[facing=east,half=bottom]",
+    );
+    expect(normalizeBlockState("minecraft:stone")).toBe("minecraft:stone");
+    expect(normalizeBlockState("stone")).toBe("minecraft:stone");
+    expect(normalizeBlockState({ id: "stone" })).toBe("minecraft:stone");
+  });
+
+  test("keeps explicit air and drops empty property containers", () => {
+    expect(normalizeBlockState({ id: "minecraft:air" })).toBe("minecraft:air");
+    expect(normalizeBlockState("minecraft:air")).toBe("minecraft:air");
+    expect(normalizeBlockState({ id: "minecraft:stone", properties: {} })).toBe("minecraft:stone");
+  });
+
+  test("accepts a compound carrying both schemas only when they agree", () => {
+    expect(
+      normalizeBlockState({
+        id: "minecraft:lever",
+        Name: "lever",
+        properties: { powered: "true" },
+        Properties: { powered: "true" },
+      }),
+    ).toBe("minecraft:lever[powered=true]");
+    expect(() => normalizeBlockState({ id: "minecraft:stone", Name: "minecraft:dirt" })).toThrow(/conflicts/);
+    expect(() =>
+      normalizeBlockState({ id: "minecraft:lever", properties: { powered: "true" }, Properties: { powered: "false" } }),
+    ).toThrow(/conflicts/);
+  });
+
+  test("rejects states it cannot read instead of turning them into air", () => {
+    for (const bad of [
+      undefined,
+      null,
+      42,
+      ["minecraft:stone"],
+      {},
+      { properties: { facing: "east" } },
+      { id: 7 },
+      { id: "" },
+      { id: "Minecraft:Stone" },
+      { id: "minecraft:stone[facing=east]" },
+      { id: "minecraft:stone", properties: "facing=east" },
+      { id: "minecraft:stone", properties: ["facing"] },
+      { id: "minecraft:stone", properties: { facing: 3 } },
+      { id: "minecraft:stone", properties: { facing: "" } },
+      "",
+      "stone[facing=east]",
+    ]) {
+      expect(() => normalizeBlockState(bad), JSON.stringify(bad)).toThrow();
+    }
+  });
+
+  test("extracts a modern {id, properties} template with blocks and a jigsaw connector", async () => {
+    const template = templateWith(
+      [
+        namedList("palette", TAG_COMPOUND, [
+          modernEntry("minecraft:jigsaw", { orientation: "up_north" }),
+          modernEntry("minecraft:stone"),
+          modernEntry("minecraft:oak_stairs", { half: "bottom", facing: "east" }),
+          modernEntry("minecraft:air"),
+        ]),
+      ],
+      [
+        blockAt([0, 0, 0], 1),
+        blockAt([1, 0, 0], 2),
+        blockAt([2, 0, 0], 3),
+        blockAt([0, 1, 0], 0, [
+          namedCompound("nbt", [
+            namedString("id", "minecraft:jigsaw"),
+            namedString("name", "village/plains/street"),
+            namedString("pool", "village/plains/houses"),
+            namedString("target", "minecraft:building_entrance"),
+            namedString("final_state", "minecraft:dirt_path"),
+            namedString("joint", "aligned"),
+            namedInt("placement_priority", 3),
+            namedInt("selection_priority", 5),
+          ]),
+        ]),
+      ],
+    );
+
+    const bundle = await extractTemplates({ [TEMPLATE_PATH]: template });
+    const [result] = bundle.structureTemplates;
+
+    expect(result?.palettes).toEqual([
+      [
+        "minecraft:jigsaw[orientation=up_north]",
+        "minecraft:stone",
+        "minecraft:oak_stairs[facing=east,half=bottom]",
+        "minecraft:air",
+      ],
+    ]);
+    // Air and the jigsaw are not ordinary blocks; the solid ones survive.
+    expect(result?.blocks).toEqual([0, 0, 0, 1, 1, 0, 0, 2]);
+    expect(result?.jigsaws).toEqual([
+      {
+        pos: [0, 1, 0],
+        orientation: "up_north",
+        name: "minecraft:village/plains/street",
+        pool: "minecraft:village/plains/houses",
+        target: "minecraft:building_entrance",
+        finalState: "minecraft:dirt_path",
+        jointType: "aligned",
+        placementPriority: 3,
+        selectionPriority: 5,
+      },
+    ]);
+  });
+
+  test("extracts compact block-id string palettes", async () => {
+    const template = templateWith(
+      [namedList("palette", TAG_STRING, [nbtString("minecraft:jigsaw"), nbtString("stone"), nbtString("minecraft:air")])],
+      [
+        blockAt([0, 0, 0], 1),
+        blockAt([1, 0, 0], 2),
+        blockAt([2, 0, 0], 0, [
+          namedCompound("nbt", [namedString("name", "minecraft:top"), namedString("pool", "minecraft:empty")]),
+        ]),
+      ],
+    );
+
+    const [result] = (await extractTemplates({ [TEMPLATE_PATH]: template })).structureTemplates;
+
+    expect(result?.palettes).toEqual([["minecraft:jigsaw", "minecraft:stone", "minecraft:air"]]);
+    expect(result?.blocks).toEqual([0, 0, 0, 1]);
+    expect(result?.jigsaws).toHaveLength(1);
+    expect(result?.jigsaws[0]?.orientation).toBe("north_up");
+  });
+
+  test("keeps every alternative palette in order, whatever schema it uses", async () => {
+    const template = templateWith(
+      [
+        namedList("palettes", TAG_LIST, [
+          listPayload(TAG_COMPOUND, [
+            modernEntry("minecraft:spruce_planks"),
+            modernEntry("minecraft:oak_stairs", { half: "top", facing: "north" }),
+          ]),
+          listPayload(TAG_COMPOUND, [
+            paletteEntry("minecraft:birch_planks"),
+            paletteEntry("minecraft:oak_stairs", { half: "top", facing: "north" }),
+          ]),
+          listPayload(TAG_STRING, [nbtString("minecraft:acacia_planks"), nbtString("minecraft:air")]),
+        ]),
+      ],
+      [blockAt([0, 0, 0], 0), blockAt([1, 0, 0], 1)],
+    );
+
+    const [result] = (await extractTemplates({ [TEMPLATE_PATH]: template })).structureTemplates;
+
+    // Property sorting must not reorder or deduplicate the palettes themselves.
+    expect(result?.palettes).toEqual([
+      ["minecraft:spruce_planks", "minecraft:oak_stairs[facing=north,half=top]"],
+      ["minecraft:birch_planks", "minecraft:oak_stairs[facing=north,half=top]"],
+      ["minecraft:acacia_planks", "minecraft:air"],
+    ]);
+    expect(result?.blocks).toEqual([0, 0, 0, 0, 1, 0, 0, 1]);
+  });
+
+  test("rejects a block index that an alternative palette cannot resolve", async () => {
+    const template = templateWith(
+      [
+        namedList("palettes", TAG_LIST, [
+          listPayload(TAG_COMPOUND, [modernEntry("minecraft:stone"), modernEntry("minecraft:dirt")]),
+          listPayload(TAG_COMPOUND, [modernEntry("minecraft:stone")]),
+        ]),
+      ],
+      [blockAt([0, 0, 0], 1)],
+    );
+
+    await expect(extractTemplates({ [TEMPLATE_PATH]: template })).rejects.toThrow(/test\/room.*state index 1.*palette 1/);
+  });
+
+  test.each([
+    ["a missing id", compoundPayload([namedCompound("properties", [namedString("facing", "east")])])],
+    ["a non-string id", compoundPayload([namedInt("id", 7)])],
+    ["an empty id", modernEntry("")],
+    [
+      "a properties value that is not a compound",
+      compoundPayload([namedString("id", "minecraft:stone"), namedString("properties", "facing=east")]),
+    ],
+    [
+      "a property value that is not a string",
+      compoundPayload([namedString("id", "minecraft:stone"), namedCompound("properties", [namedInt("facing", 3)])]),
+    ],
+    ["conflicting id fields", compoundPayload([namedString("id", "minecraft:stone"), namedString("Name", "minecraft:dirt")])],
+  ])("names the template and palette entry when a palette has %s", async (_label, badEntry) => {
+    const template = templateWith(
+      [namedList("palette", TAG_COMPOUND, [modernEntry("minecraft:stone"), badEntry])],
+      [blockAt([0, 0, 0], 0)],
+    );
+
+    await expect(extractTemplates({ [TEMPLATE_PATH]: template })).rejects.toThrow(/test\/room\.nbt.*palette 0.*entry 1/);
+  });
+
+  test("accepts explicit air in a palette", async () => {
+    const template = templateWith(
+      [namedList("palette", TAG_COMPOUND, [modernEntry("minecraft:air"), modernEntry("minecraft:stone")])],
+      [blockAt([0, 0, 0], 0), blockAt([1, 0, 0], 1)],
+    );
+
+    const [result] = (await extractTemplates({ [TEMPLATE_PATH]: template })).structureTemplates;
+    expect(result?.blocks).toEqual([1, 0, 0, 1]);
   });
 });

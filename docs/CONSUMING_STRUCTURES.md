@@ -19,6 +19,8 @@ Each processed version writes four sidecar files next to `dataset.json` in
 
 ## Template shape
 
+The NBT palettes are read in any of the three forms Minecraft has used: the legacy compound (`{Name, Properties}`), the compound written from 26.3 on (`{id, properties}`), and a bare block-id string. All normalize to the `id[prop=value,...]` strings below (properties sorted). A palette entry that matches none of them, or whose `id` and `Name` disagree, fails the extraction with the template path and palette position instead of becoming air. A block whose state index falls outside any alternative palette fails it the same way.
+
 ```jsonc
 {
   "id": "minecraft:village/plains/houses/plains_small_house_1",
