@@ -267,6 +267,9 @@ function resolveCollection(dataset: VersionDataset, collection: string, params: 
     case "tree-features":
       // Single source-derived object, exposed as a one-entry collection for route consistency.
       return { responseKey: "treeFeatures", entries: dataset.treeFeatures ? [dataset.treeFeatures] : [] };
+    case "raid-mechanics":
+      // Single source-derived object, exposed as a one-entry collection for route consistency.
+      return { responseKey: "raidMechanics", entries: dataset.raidMechanics ? [dataset.raidMechanics] : [] };
     case "fishing-odds":
       // Single derived object, exposed as a one-entry collection for route consistency.
       return { responseKey: "fishingOdds", entries: dataset.fishingOdds ? [dataset.fishingOdds] : [] };
@@ -339,6 +342,7 @@ function summarizeDataset(dataset: VersionDataset): Record<string, unknown> {
       anvilMechanics: dataset.anvilMechanics ? 1 : 0,
       sulfurCube: dataset.sulfurCube ? 1 : 0,
       treeFeatures: dataset.treeFeatures ? 1 : 0,
+      raidMechanics: dataset.raidMechanics ? 1 : 0,
       fishingOdds: dataset.fishingOdds ? 1 : 0,
       lootOdds: dataset.lootOdds ? 1 : 0,
       oreGeneration: dataset.oreGeneration ? 1 : 0,

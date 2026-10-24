@@ -25,8 +25,9 @@ import { fileURLToPath } from "node:url";
 const VERSION = process.argv[2] ?? "26.2";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
-const metadataPath = path.join(repoRoot, "workspace/versions", VERSION, "metadata.json");
-const outPath = path.join(repoRoot, "workspace/datasets", VERSION, "note-block-sounds.json");
+const workspaceRoot = process.env.MCDATAHUB_WORKSPACE_ROOT ?? path.join(repoRoot, "workspace");
+const metadataPath = path.join(workspaceRoot, "versions", VERSION, "metadata.json");
+const outPath = path.join(workspaceRoot, "datasets", VERSION, "note-block-sounds.json");
 
 const ASSET_DOWNLOAD_BASE_URL = "https://resources.download.minecraft.net";
 const toAssetDownloadUrl = (hash) => `${ASSET_DOWNLOAD_BASE_URL}/${hash.slice(0, 2)}/${hash}`;

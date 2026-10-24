@@ -22,8 +22,10 @@ const TEXTURE_PREFIX = "assets/minecraft/textures/";
 const LAYER_DEFINITIONS_SOURCE_PATH = "net/minecraft/client/model/geom/LayerDefinitions.java";
 const RENDERER_TEXTURE_PATTERN = /textures\/entity\/[a-z0-9_./-]+\.png/gi;
 const MODEL_LAYER_PATTERN = /ModelLayers\.([A-Z0-9_]+)/g;
-const REGISTER_METHOD_REFERENCE_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
-const REGISTER_LAMBDA_PATTERN = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
+const REGISTER_METHOD_REFERENCE_PATTERN =
+  /register\(\s*(?:registry\s*,\s*)?EntityTypes?\.([A-Z0-9_]+)\s*,\s*([A-Za-z0-9_$.]+)::new/g;
+const REGISTER_LAMBDA_PATTERN =
+  /register\(\s*(?:registry\s*,\s*)?EntityTypes?\.([A-Z0-9_]+)\s*,\s*context\s*->\s*new\s+([A-Za-z0-9_$.]+)/g;
 
 /** Generic layers every humanoid instantiates; following them would attach player-head/armor/held-item models to each mob. */
 const GENERIC_RENDER_LAYERS = new Set([
@@ -276,7 +278,7 @@ export class MobModelExtractor {
 
     const source = await fs.readFile(sourcePath, "utf8");
     const layersByMob = new Map<string, string[]>();
-    const registerPattern = /register\(\s*EntityTypes?\.([A-Z0-9_]+)\s*,/g;
+    const registerPattern = /register\(\s*(?:registry\s*,\s*)?EntityTypes?\.([A-Z0-9_]+)\s*,/g;
 
     for (const match of source.matchAll(registerPattern)) {
       const entityType = match[1];

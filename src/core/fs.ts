@@ -16,6 +16,11 @@ export async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+/** Read a decompiled source file (or any other text) as UTF-8. */
+export async function readTextFile(path: string): Promise<string> {
+  return fs.readFile(path, "utf8");
+}
+
 export async function readJsonFile<T>(path: string, fallback?: T): Promise<T> {
   try {
     const raw = await fs.readFile(path, "utf8");

@@ -10,6 +10,16 @@ import type { VersionDataset } from "../src/domain/types.js";
 import { decodePng } from "../src/extraction/png.js";
 
 describe("dataset store", () => {
+  test("lists only versions with a complete dataset file", async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), "mc-datahub-version-list-"));
+    const paths = createWorkspacePaths(root);
+    await fs.mkdir(join(paths.datasetsDir, "26.4-snapshot-4"), { recursive: true });
+    await fs.mkdir(join(paths.datasetsDir, "26.3"), { recursive: true });
+    await fs.writeFile(join(paths.datasetsDir, "26.3", "dataset.json"), "{}", "utf8");
+
+    expect(await new DatasetStore(paths, createConsoleLogger(false)).listVersions()).toEqual(["26.3"]);
+  });
+
   test("exports texture and mob images alongside the saved dataset", async () => {
     const root = await fs.mkdtemp(join(tmpdir(), "mc-datahub-dataset-store-"));
     const store = new DatasetStore(createWorkspacePaths(root), createConsoleLogger(false));
@@ -21,6 +31,8 @@ describe("dataset store", () => {
     const dataset: VersionDataset = {
       version: "25w14a",
       generatedAt: "2026-04-02T00:00:00.000Z",
+      releaseTime: "2026-04-01T12:13:30+00:00",
+      versionType: "snapshot",
       provenance: {
         sourceArtifacts: ["InMemoryArchiveSource"],
         extractedFromPaths: ["assets/minecraft/textures/block/oak_planks.png"],
@@ -158,6 +170,12 @@ describe("dataset store", () => {
     };
 
     await store.saveDataset(dataset, archive);
+
+    const versionMetadata = JSON.parse(await fs.readFile(join(root, "datasets/25w14a/version.json"), "utf8")) as {
+      releaseTime: string;
+      type: string;
+    };
+    expect(versionMetadata).toMatchObject({ releaseTime: dataset.releaseTime, type: "snapshot" });
 
     const exportedImage = await fs.readFile(join(root, "datasets/25w14a/images/block/oak_planks.png"));
     const exportedMobModelTexture = await fs.readFile(join(root, "datasets/25w14a/images/entity/allay/allay.png"));

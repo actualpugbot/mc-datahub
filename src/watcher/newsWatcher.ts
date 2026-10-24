@@ -6,18 +6,27 @@ import type { AppConfig } from "../config.js";
 import type { MinecraftNewsPost, NewsPostKind } from "../domain/types.js";
 
 const SNAPSHOT_PATTERN = /\b\d{2}w\d{2}[a-z]\b/gi;
-const VERSION_PATTERN = /\b\d+\.\d+(?:\.\d+)?(?:-(?:pre|rc)\d+)?\b/gi;
+const VERSION_PATTERN = /\b\d+\.\d+(?:\.\d+)?(?:-(?:snapshot|pre|rc)-?\d+)?\b/gi;
+const NAMED_PREVIEW_PATTERN = /\b(\d+\.\d+(?:\.\d+)?)\s+(snapshot|pre-release|release candidate)\s+(\d+)\b/gi;
 const ARTICLE_PATH_PATTERN = /\/article\//i;
 
 export function extractVersionIdentifiers(input: string): string[] {
   const matches = new Set<string>();
+  for (const match of input.matchAll(NAMED_PREVIEW_PATTERN)) {
+    const namedStage = match[2]?.toLowerCase();
+    const stage = namedStage === "pre-release" ? "pre" : namedStage === "release candidate" ? "rc" : "snapshot";
+    const numberSeparator = match[1]?.startsWith("1.") ? "" : "-";
+    matches.add(`${match[1]}-${stage}${numberSeparator}${match[3]}`);
+  }
   for (const pattern of [SNAPSHOT_PATTERN, VERSION_PATTERN]) {
     for (const match of input.matchAll(pattern)) {
       matches.add(match[0]);
     }
   }
 
-  return Array.from(matches).sort();
+  return Array.from(matches)
+    .filter((id) => !Array.from(matches).some((other) => other !== id && other.startsWith(`${id}-`)))
+    .sort();
 }
 
 export function classifyNewsPost(title: string): NewsPostKind {
@@ -26,13 +35,12 @@ export function classifyNewsPost(title: string): NewsPostKind {
     return "snapshot";
   }
 
+  if (normalized.includes("pre-release") || normalized.includes("release candidate") || /-(?:pre|rc)-?\d+\b/.test(normalized)) {
+    return "snapshot";
+  }
+
   VERSION_PATTERN.lastIndex = 0;
-  if (
-    normalized.includes("pre-release") ||
-    normalized.includes("release candidate") ||
-    normalized.includes("java edition") ||
-    VERSION_PATTERN.test(title)
-  ) {
+  if (normalized.includes("java edition") || VERSION_PATTERN.test(title)) {
     VERSION_PATTERN.lastIndex = 0;
     return "release";
   }

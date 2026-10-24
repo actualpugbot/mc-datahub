@@ -32,6 +32,7 @@ const LOOT_SINGLETON_SOURCES = [
 const LOOT_POOL_SOURCE = "net/minecraft/world/level/storage/loot/LootPool.java";
 const BUILT_IN_LOOT_TABLES_SOURCE = "net/minecraft/world/level/storage/loot/BuiltInLootTables.java";
 const MOB_EFFECTS_SOURCE = "net/minecraft/world/effect/MobEffects.java";
+const MOB_EFFECT_IDS_SOURCE = "net/minecraft/world/effect/MobEffectIds.java";
 const MOB_EFFECT_SOURCE = "net/minecraft/world/effect/MobEffect.java";
 const ATTRIBUTES_SOURCE = "net/minecraft/world/entity/ai/attributes/Attributes.java";
 const BUBBLE_COLUMN_SOURCE = "net/minecraft/world/level/block/BubbleColumnBlock.java";
@@ -650,8 +651,14 @@ export class FishingMechanicsExtractor {
     const effectsPath = join(root, MOB_EFFECTS_SOURCE);
     if (await fileExists(effectsPath)) {
       const effectsSource = await readFile(effectsPath, "utf8");
-      luck.luckEffect = this.readLuckEffect(effectsSource, "LUCK", amplifierExpression, warnings);
-      luck.unluckEffect = this.readLuckEffect(effectsSource, "UNLUCK", amplifierExpression, warnings);
+      const effectIdsPath = join(root, MOB_EFFECT_IDS_SOURCE);
+      const effectIdsSource = (await fileExists(effectIdsPath)) ? await readFile(effectIdsPath, "utf8") : undefined;
+      if (effectIdsSource) {
+        luck.sourcePaths.push(MOB_EFFECT_IDS_SOURCE);
+        pushUnique(sourcePaths, MOB_EFFECT_IDS_SOURCE);
+      }
+      luck.luckEffect = this.readLuckEffect(effectsSource, effectIdsSource, "LUCK", amplifierExpression, warnings);
+      luck.unluckEffect = this.readLuckEffect(effectsSource, effectIdsSource, "UNLUCK", amplifierExpression, warnings);
       luck.sourcePaths.push(MOB_EFFECTS_SOURCE);
       pushUnique(sourcePaths, MOB_EFFECTS_SOURCE);
     } else {
@@ -682,22 +689,24 @@ export class FishingMechanicsExtractor {
 
   private readLuckEffect(
     effectsSource: string,
+    effectIdsSource: string | undefined,
     symbol: "LUCK" | "UNLUCK",
     amplifierExpression: string | undefined,
     warnings: string[],
   ): FishingLuckEffect | undefined {
     const pattern = new RegExp(
-      `\\b${symbol}\\s*=\\s*register\\(\\s*"(\\w+)"[\\s\\S]{0,400}?\\.addAttributeModifier\\(\\s*Attributes\\.(\\w+)\\s*,[^,]*,\\s*(-?[\\d.]+)\\s*,\\s*AttributeModifier\\.Operation\\.(\\w+)\\s*\\)`,
+      `\\b${symbol}\\s*=\\s*register\\(\\s*(?:"(\\w+)"|MobEffectIds\\.${symbol})[\\s\\S]{0,400}?\\.addAttributeModifier\\(\\s*Attributes\\.(\\w+)\\s*,[^,]*,\\s*(-?[\\d.]+)\\s*,\\s*AttributeModifier\\.Operation\\.(\\w+)\\s*\\)`,
     );
     const match = effectsSource.match(pattern);
-    if (!match) {
+    const id = match?.[1] ?? effectIdsSource?.match(new RegExp(`\\b${symbol}\\s*=\\s*createKey\\("(\\w+)"\\)`))?.[1];
+    if (!match || !id) {
       warnings.push(`The MobEffects.${symbol} luck attribute modifier was not found in MobEffects.java.`);
       return undefined;
     }
 
     const amount = Number(match[3]);
     const effect: FishingLuckEffect = {
-      id: `minecraft:${match[1]}`,
+      id: `minecraft:${id}`,
       attribute: `minecraft:${match[2]?.toLowerCase()}`,
       amount,
       operation: match[4],

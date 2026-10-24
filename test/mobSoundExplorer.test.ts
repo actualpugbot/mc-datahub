@@ -24,6 +24,29 @@ afterEach(async () => {
 });
 
 describe("mob sound explorer", () => {
+  test("defaults to the newest available stable release while allowing a preview selection", async () => {
+    const setup = await createFixtureProject();
+    const stable = await setup.store.loadDataset("2.0");
+    await setup.store.saveDataset({
+      ...stable,
+      version: "2.1-pre-1",
+      versionType: "snapshot",
+      releaseTime: "2026-04-13T00:00:00.000Z",
+    });
+
+    const defaultPayload = await buildMobSoundExplorerPayload(setup.store, setup.config.workspace, {
+      compareToVersion: "",
+    });
+    expect(defaultPayload.version).toBe("2.0");
+    expect(defaultPayload.availableVersions).toContain("2.1-pre-1");
+
+    const previewPayload = await buildMobSoundExplorerPayload(setup.store, setup.config.workspace, {
+      version: "2.1-pre-1",
+      compareToVersion: "",
+    });
+    expect(previewPayload.version).toBe("2.1-pre-1");
+  });
+
   test("builds combined extracted, wiki, and version diff payloads", async () => {
     const setup = await createFixtureProject();
 

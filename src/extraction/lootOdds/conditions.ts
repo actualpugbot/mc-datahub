@@ -80,7 +80,7 @@ function compactJson(value: Json | undefined): string {
 function signatureOf(type: string, raw: Record<string, Json>): string {
   const rest: Record<string, Json> = {};
   for (const [key, value] of Object.entries(raw)) {
-    if (key === "condition") continue;
+    if (key === "condition" || key === "type") continue;
     rest[key] = value;
   }
   const keys = Object.keys(rest).sort();
@@ -110,10 +110,11 @@ export class ConditionCompiler {
   compileAll(conditions: Json | undefined): CompiledConditions {
     const summaries: ConditionSummary[] = [];
     const unresolved: string[] = [];
-    if (!Array.isArray(conditions) || conditions.length === 0) {
+    if (conditions === undefined) {
       return { expr: ALWAYS, summaries, unresolved };
     }
-    const terms = conditions.map((condition) => this.compileOne(condition, summaries, unresolved));
+    const list = Array.isArray(conditions) ? conditions : [conditions];
+    const terms = list.map((condition) => this.compileOne(condition, summaries, unresolved));
     return { expr: simplifyAnd(terms), summaries, unresolved };
   }
 
@@ -123,7 +124,9 @@ export class ConditionCompiler {
       this.warnings.push(`malformed condition: ${compactJson(raw)}`);
       return this.context.unresolvedConditionsPass ? ALWAYS : NEVER;
     }
-    const type = namespaced(typeof object.condition === "string" ? object.condition : "unknown");
+    const type = namespaced(
+      typeof object.type === "string" ? object.type : typeof object.condition === "string" ? object.condition : "unknown",
+    );
     const signature = signatureOf(type, object);
 
     // Composite conditions recurse before any leaf handling.

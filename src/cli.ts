@@ -10,6 +10,7 @@ import { datasetVersionDir, versionDownloadsDir } from "./core/paths.js";
 import type { VersionDataset, VersionDiff, VersionMetadata } from "./domain/types.js";
 import { structureFileWrites } from "./datasets/datasetStore.js";
 import { buildBanners } from "./extraction/banners.js";
+import { buildBlockSoundsSidecar } from "./orchestrators/buildVersionSidecars.js";
 import { buildJukeboxSongs } from "./extraction/jukeboxSongs.js";
 import { buildOreGeneration } from "./extraction/oreGeneration.js";
 import { buildStructureData } from "./extraction/structures.js";
@@ -32,6 +33,7 @@ const COLLECTION_GETTERS: Record<string, (dataset: VersionDataset) => unknown> =
   biomes: (dataset) => dataset.biomes,
   "sulfur-cube": (dataset) => dataset.sulfurCube ?? null,
   "tree-features": (dataset) => dataset.treeFeatures ?? null,
+  "raid-mechanics": (dataset) => dataset.raidMechanics ?? null,
   "fishing-odds": (dataset) => dataset.fishingOdds ?? null,
   "loot-odds": (dataset) => dataset.lootOdds ?? null,
   "ore-generation": (dataset) => dataset.oreGeneration ?? null,
@@ -513,6 +515,41 @@ async function main(): Promise<void> {
             outputDirectory: directory,
             songs: payload.songs.length,
             unresolvedItems: payload.songs.filter((song) => !song.itemResolved).map((song) => song.itemId),
+          },
+          null,
+          2,
+        ),
+      );
+    });
+
+  dumpCommand
+    .command("block-sounds")
+    .argument("<version>", "Minecraft version id with a decompiled client and a processed dataset")
+    .option("--output <path>", "Write block-sounds.json to a directory instead of the dataset directory")
+    .action(async (version, options) => {
+      const context = createDefaultContext(process.cwd(), program.opts<{ verbose: boolean }>().verbose);
+      const dataset = await context.datasetStore.loadDataset(version);
+      const result = await buildBlockSoundsSidecar(context.config.workspace, version, dataset);
+      if (options.output) {
+        await writeJsonFile(join(resolve(process.cwd(), options.output), "block-sounds.json"), result.dataset);
+      }
+      const directory = options.output
+        ? resolve(process.cwd(), options.output)
+        : datasetVersionDir(context.config.workspace, version);
+      console.log(
+        JSON.stringify(
+          {
+            version,
+            outputDirectory: directory,
+            soundTypes: result.dataset.soundTypes.length,
+            blocks: Object.keys(result.dataset.blocks).length,
+            // A non-empty skipped/unknown list means the source shape moved and
+            // the extractor needs a look, so it is reported rather than hidden.
+            skippedSoundTypes: result.skippedSoundTypes,
+            unknownSoundTypes: result.unknownSoundTypes,
+            unresolvedSetTypes: result.unresolvedSetTypes,
+            setTypeOverrides: result.setTypeOverrides.length,
+            defaultedToStone: result.defaultedBlocks.length,
           },
           null,
           2,

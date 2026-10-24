@@ -1075,6 +1075,285 @@ export interface SulfurCubeDataset {
   warnings: string[];
 }
 
+/** A duration in game ticks with its seconds equivalent (20 ticks = 1 second). */
+export interface RaidDuration {
+  ticks: number;
+  seconds: number;
+}
+
+export type RaidDifficulty = "easy" | "normal" | "hard";
+
+/** Bonus-spawn cap for one difficulty: a constant, or `random.nextInt(uniformBelow)` (0..uniformBelow-1, equal odds). */
+export type RaidBonusCap = { constant: number } | { uniformBelow: number };
+
+/**
+ * Raid.getPotentialBonusSpawns for one raider type. The cap comes from `capByDifficulty`, is forced to 0 by
+ * `zeroOnWaves`/`onlyOnBonusWave`, and the extra spawns are then `cap > 0 ? random.nextInt(cap + 1) : 0`.
+ * `wave` is the group number being spawned; the bonus wave is group `numGroups + 1`.
+ */
+export interface RaidBonusSpawnRule {
+  raider: string;
+  capByDifficulty: Record<RaidDifficulty, RaidBonusCap>;
+  zeroOnWaves?: { atMost?: number; equals?: number[] };
+  onlyOnBonusWave?: boolean;
+}
+
+export interface RaidCountProbability {
+  count: number;
+  probability: number;
+}
+
+export interface RaidRosterEntry {
+  raider: string;
+  /** spawnsPerWaveBeforeBonus[index] (index = wave, or numGroups on the bonus wave). */
+  fixed: number;
+  randomMin: number;
+  randomMax: number;
+  /** Exact distribution of the random extra count. */
+  extraDistribution: RaidCountProbability[];
+  expected: number;
+}
+
+export interface RaidRosterRider {
+  rider: string;
+  /** How many ravagers in this wave carry this rider: all of them, only the first, or all but the first. */
+  seats: "all" | "first" | "rest";
+  min: number;
+  max: number;
+  expected: number;
+}
+
+export interface RaidRosterWave {
+  /** Group number passed to spawnGroup (bonus wave = numGroups + 1). */
+  wave: number;
+  isBonusWave: boolean;
+  /** Index read from spawnsPerWaveBeforeBonus. */
+  baseIndex: number;
+  raiders: RaidRosterEntry[];
+  riders: RaidRosterRider[];
+  totalMin: number;
+  totalMax: number;
+  totalExpected: number;
+  /** Chance each raider type becomes the wave captain (first leader-capable raider spawned, in spawn order). */
+  captainOdds: Record<string, number>;
+}
+
+export interface RaidRosterDifficulty {
+  difficulty: RaidDifficulty;
+  numGroups: number;
+  waves: RaidRosterWave[];
+  /** Present because every difficulty can have one; it only spawns when the raid omen level allows it. */
+  bonusWave: RaidRosterWave;
+  bonusWaveRequiresRaidOmenLevel: number;
+}
+
+export interface RaidRiderRule {
+  /** Group numbers the rule applies to. Rules are checked in order; the first match wins. */
+  when: { waveEquals?: number; waveAtLeast?: number };
+  /** numGroups of the difficulty named in source that produced the threshold. */
+  thresholdFrom: string;
+  firstRavager: string;
+  otherRavagers: string;
+}
+
+export interface RaidAttributeOverride {
+  kind: "dimension_type" | "biome" | "timeline";
+  id: string;
+  value?: boolean;
+  keyframes?: Array<{ ticks: number; value: unknown }>;
+  modifier?: string;
+}
+
+export interface RaidEnvironmentAttribute {
+  id: string;
+  defaultValue?: boolean;
+  overrides: RaidAttributeOverride[];
+}
+
+export interface RaidOmenLevelRow {
+  raidOmenLevel: number;
+  /** Bad Omen / Raid Omen amplifier that adds exactly this level to a fresh raid (level = amplifier + 1). */
+  omenAmplifier: number;
+  /** Roman-numeral effect level shown in game. */
+  effectLevel: number;
+  bonusWave: boolean;
+  enchantOdds: number;
+  heroOfTheVillageAmplifier: number;
+  heroDiscountFraction?: number;
+  trialOmen?: RaidDuration;
+}
+
+export interface RaidOminousBottleSource {
+  lootTable: string;
+  amplifierMin?: number;
+  amplifierMax?: number;
+  /** Amplifier provider as written in the table (uniform integers are inclusive on both ends). */
+  amplifierProvider: unknown;
+  requiresCaptain: boolean;
+  referencedBy: string[];
+}
+
+export interface RaidEnchantmentProvider {
+  key: string;
+  id: string;
+  type?: string;
+  enchantment?: string;
+  level?: unknown;
+}
+
+export interface RaidEnchantmentTier {
+  /** Tier applies to group numbers >= minWave. */
+  minWave: number;
+  provider: string;
+  enchantment?: string;
+  level?: unknown;
+}
+
+export interface RaidRaiderBuffs {
+  mainHandItem?: string;
+  /** Pillagers only swap in the enchanted crossbow when a tier applies; vindicators always get a fresh axe. */
+  equipsOnlyWhenEnchanted: boolean;
+  enchantRoll: string;
+  tiers: RaidEnchantmentTier[];
+  belowLowestTier?: string;
+}
+
+export interface RaidRaiderInfo {
+  id: string;
+  key: string;
+  /** Spawns as part of raid waves (listed in Raid.RaiderType). */
+  inRaidWaves: boolean;
+  spawnsPerWaveBeforeBonus?: number[];
+  maxHealth?: number;
+  canBeLeader: boolean;
+  raidBuffs?: RaidRaiderBuffs;
+  sourcePath?: string;
+}
+
+export interface RaidRule {
+  rule: string;
+  detail?: string;
+}
+
+/**
+ * Source-derived raid mechanics: wave rosters, bonus spawns, riders, omen flow, raid enchantments,
+ * timers, geometry, outcomes, Hero of the Village rewards, and pillager patrols. Values are parsed from
+ * the decompiled sources and data files; unparseable seams become warnings.
+ */
+export interface RaidMechanicsDataset {
+  waves: {
+    numGroupsByDifficulty: Record<string, number>;
+    /** Raider types in spawn order (Raid.RaiderType.values()). */
+    spawnOrder: string[];
+    spawnsPerWaveBeforeBonus: Record<string, number[]>;
+    bonusWave: { requiresRaidOmenLevelAtLeast?: number; groupNumber: string; countsFromIndex: string };
+    rules: RaidRule[];
+  };
+  bonusSpawns: { formula: string; rules: RaidBonusSpawnRule[] };
+  rosterTable: RaidRosterDifficulty[];
+  riders: { rules: RaidRiderRule[]; notes: string[] };
+  captain: {
+    rule: string;
+    bannerDropChance?: number;
+    ominousBannerLayers: Array<{ pattern: string; patternId?: string; color: string }>;
+    rules: RaidRule[];
+  };
+  omen: {
+    maxRaidOmenLevel?: number;
+    levels: RaidOmenLevelRow[];
+    badOmen: { effectId: string; raidOmenDuration?: RaidDuration; conditions: string[] };
+    raidOmen: { effectId: string; triggersAtRemainingTicks?: number; rules: string[] };
+    absorb: { levelAddedPerAmplifier: string; clampMin?: number; rules: string[] };
+    canStartRaid: RaidEnvironmentAttribute;
+    ominousBottle: {
+      itemId: string;
+      badOmenDuration?: RaidDuration;
+      amplifierMin?: number;
+      amplifierMax?: number;
+      sources: RaidOminousBottleSource[];
+    };
+    trialOmen: { perBadOmenLevel?: RaidDuration; formula: string };
+  };
+  enchantments: {
+    oddsByRaidOmenLevel: Array<{ raidOmenLevel: number; odds: number }>;
+    byRaider: Record<string, RaidRaiderBuffs>;
+    providers: RaidEnchantmentProvider[];
+    notes: string[];
+  };
+  timers: Record<string, RaidDuration & { note: string }>;
+  geometry: {
+    raidRadius?: number;
+    raiderRemovalDistance?: number;
+    villagePoiSearchRadius?: number;
+    villageCheck: string;
+    centerRelocationSectionRadius?: number;
+    waveSpawn: {
+      formula: string;
+      ringScale?: number;
+      howFarSlope?: number;
+      howFarOffset?: number;
+      jitterMultiplierBelow?: number;
+      angleStepDivisor?: number;
+      maxVerticalOffset?: number;
+      loadedChunkMargin?: number;
+      triesWhileCountingDown?: number;
+      triesAtWaveStart?: number;
+      maxFailedSpawnAttempts?: number;
+      allowInsideVillageAtOrBelowSeconds?: number;
+      rules: string[];
+      bySecondsRemaining: Array<{ secondsRemaining: number; howFar: number; ringRadius: number; jitterStep: number }>;
+    };
+    horn: { soundEvent?: string; rangeBlocks?: number; playedAtDistance?: number };
+  };
+  outcomes: { victory: RaidRule[]; loss: RaidRule[]; stopped: RaidRule[] };
+  hero: {
+    effectId: string;
+    duration?: RaidDuration;
+    amplifierFormula: string;
+    credit: RaidRule[];
+    discount: {
+      base?: number;
+      perAmplifier?: number;
+      minimumReduction?: number;
+      formula: string;
+      byAmplifier: Array<{ amplifier: number; fraction: number }>;
+    };
+    gifts: {
+      initialDelay?: RaidDuration;
+      betweenGifts?: { min: RaidDuration; max: RaidDuration };
+      throwDistance?: number;
+      headTurnDelay?: RaidDuration;
+      behaviorTimeout?: RaidDuration;
+      byProfession: Record<string, string>;
+      babyLootTable?: string;
+      unemployedLootTable?: string;
+      notes: string[];
+    };
+  };
+  patrols: {
+    gameRule: string;
+    attemptInterval?: { min: RaidDuration; max: RaidDuration };
+    chanceOneIn?: number;
+    offset?: { min: number; max: number };
+    notWithinVillageSections?: number;
+    groupSize: { formula: string; byDifficulty: Record<string, { min: number; max: number }> };
+    memberSpread?: number;
+    maxBlockLight?: number;
+    despawnDistanceWhilePatrolling?: number;
+    naturalCaptainChance?: number;
+    canSpawnAttribute: RaidEnvironmentAttribute;
+    rules: string[];
+  };
+  raiders: RaidRaiderInfo[];
+  progression: {
+    stats: Record<string, string>;
+    criteriaTriggers: Record<string, string>;
+    advancements: Array<{ id: string; parent?: string; trigger?: string; hidden?: boolean; frame?: string; experience?: number }>;
+  };
+  sourcePaths: string[];
+  warnings: string[];
+}
+
 /** Sapling growth-mechanics constants parsed from SaplingBlock.java (shared by every vanilla sapling). */
 export interface TreeFeaturesGrowthMechanics {
   /** Minimum local raw brightness above the sapling for a random-tick growth attempt (getMaxLocalRawBrightness >= N). */
@@ -1815,6 +2094,10 @@ export interface VillagerTradeDataset {
 export interface VersionDataset {
   version: string;
   generatedAt: string;
+  /** Mojang's game release timestamp, independent of when this dataset was extracted. */
+  releaseTime?: string;
+  /** Mojang manifest type. Pre-releases and release candidates are reported as snapshots. */
+  versionType?: string;
   provenance: {
     sourceArtifacts: string[];
     extractedFromPaths: string[];
@@ -1849,6 +2132,8 @@ export interface VersionDataset {
   sulfurCube?: SulfurCubeDataset;
   /** Source-derived tree growers, growth mechanics, feature shapes, and per-block wood stats. Optional so older datasets still load. */
   treeFeatures?: TreeFeaturesDataset;
+  /** Source-derived raid waves, omen flow, raid enchantments, hero rewards, and patrols. Optional so older datasets still load. */
+  raidMechanics?: RaidMechanicsDataset;
   /** The fishing loop plus the exact luck x open-water odds grid, curated scenarios, and the derived wait-time model. Optional so older datasets still load. */
   fishingOdds?: FishingOddsDataset;
   /** Exact odds for bartering, archaeology, gifts, mob drops per looting level, and chest loot. Optional so older datasets still load. */
@@ -1932,6 +2217,7 @@ export interface VersionDiffObjects {
   anvilMechanics: ObjectDiff;
   sulfurCube: ObjectDiff;
   treeFeatures: ObjectDiff;
+  raidMechanics: ObjectDiff;
   fishingOdds: ObjectDiff;
   lootOdds: ObjectDiff;
   banners: ObjectDiff;
@@ -1946,7 +2232,13 @@ export interface VersionDiffObjects {
  * Dataset fields deliberately not compared: they identify the run rather than describe the game.
  * `datasetValidation` is a report about the extraction, so it changes on every run by construction.
  */
-export type UncomparedDatasetField = "version" | "generatedAt" | "provenance" | "datasetValidation";
+export type UncomparedDatasetField =
+  | "version"
+  | "generatedAt"
+  | "releaseTime"
+  | "versionType"
+  | "provenance"
+  | "datasetValidation";
 
 type ComparedDatasetField = keyof VersionDiffCollections | keyof VersionDiffObjects;
 

@@ -1,3 +1,4 @@
+import { lootCondition, lootModifiers } from "./schema.js";
 /**
  * The exact loot-table evaluator.
  *
@@ -161,7 +162,7 @@ class Evaluator {
     poolIndexForMeta: number | undefined,
     collectPools: boolean,
   ): { dist: DistMap; pools: PoolOdds[] } {
-    const tableFunctions = asArray(record.raw.functions) as Json[];
+    const tableFunctions = lootModifiers(record.raw);
     const chainTail: Json[][] = [tableFunctions, ...pending.map((list) => [...list])];
     let total: DistMap = new Map();
     const pools: PoolOdds[] = [];
@@ -226,12 +227,12 @@ class Evaluator {
     metaPoolIndex: number | undefined,
   ): PoolEvaluation {
     const maxCount = this.context.maxTrackedCount;
-    const poolFunctions = asArray(pool.functions) as Json[];
+    const poolFunctions = lootModifiers(pool);
     const entryChain: Json[][] = [poolFunctions, ...chainTail.map((list) => [...list])];
 
     // Pool conditions are tested once per pool, so they get their own compiler.
     const poolCompiler = new ConditionCompiler(this.data, this.context);
-    const poolConditions = poolCompiler.compileAll(pool.conditions);
+    const poolConditions = poolCompiler.compileAll(lootCondition(pool));
     const poolConditionProbability = poolCompiler.probabilityOf(poolConditions.expr);
     this.warnings.push(...poolCompiler.warnings);
 
@@ -379,7 +380,7 @@ class Evaluator {
   private buildNode(raw: Json, compiler: ConditionCompiler, path: string): EntryNode {
     const object = asRecord(raw) ?? {};
     const type = namespaced(typeof object.type === "string" ? object.type : "minecraft:empty");
-    const compiled = compiler.compileAll(object.conditions);
+    const compiled = compiler.compileAll(lootCondition(object));
     const node: EntryNode = {
       type,
       raw: object,
@@ -413,7 +414,7 @@ class Evaluator {
     metaPoolIndex: number | undefined,
   ): DistMap {
     const node = entry.node;
-    const entryFunctions = asArray(node.raw.functions) as Json[];
+    const entryFunctions = lootModifiers(node.raw);
     const chain: Json[][] = [entryFunctions, ...entryChain.map((list) => [...list])];
 
     switch (node.type) {

@@ -83,9 +83,15 @@ export class DatasetStore {
             writeJsonFile(join(directory, "entity-renderers.json"), dataset.renderData.entityRenderers),
             writeJsonFile(join(directory, "special-renderers.json"), dataset.renderData.specialRenderers),
             writeJsonFile(join(directory, "render-validation.json"), dataset.renderData.validation),
-            writeJsonFile(join(directory, "version.json"), {
-              version: dataset.version,
-              generatedAt: dataset.generatedAt,
+          ]
+        : []),
+      writeJsonFile(join(directory, "version.json"), {
+        version: dataset.version,
+        generatedAt: dataset.generatedAt,
+        ...(dataset.releaseTime ? { releaseTime: dataset.releaseTime } : {}),
+        ...(dataset.versionType ? { type: dataset.versionType } : {}),
+        ...(dataset.renderData
+          ? {
               renderData: {
                 blockstates: dataset.renderData.blockstates.length,
                 blockModels: dataset.renderData.blockModels.length,
@@ -95,9 +101,9 @@ export class DatasetStore {
                 entities: dataset.renderData.entities.length,
                 specialRenderers: dataset.renderData.specialRenderers.length,
               },
-            }),
-          ]
-        : []),
+            }
+          : {}),
+      }),
       writeJsonFile(join(directory, "palettes.json"), dataset.palettes),
       writeJsonFile(join(directory, "enchantments.json"), dataset.enchantments),
       ...(dataset.anvilMechanics
@@ -124,6 +130,15 @@ export class DatasetStore {
               version: dataset.version,
               generatedAt: dataset.generatedAt,
               ...dataset.treeFeatures,
+            }),
+          ]
+        : []),
+      ...(dataset.raidMechanics
+        ? [
+            writeJsonFile(join(directory, "raid-mechanics.json"), {
+              version: dataset.version,
+              generatedAt: dataset.generatedAt,
+              ...dataset.raidMechanics,
             }),
           ]
         : []),
@@ -322,9 +337,17 @@ export class DatasetStore {
   async listVersions(): Promise<string[]> {
     await ensureDir(this.paths.datasetsDir);
     const entries = await fs.readdir(this.paths.datasetsDir, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
+    const available = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => ({
+          id: entry.name,
+          exists: await fileExists(join(this.paths.datasetsDir, entry.name, "dataset.json")),
+        })),
+    );
+    return available
+      .filter((entry) => entry.exists)
+      .map((entry) => entry.id)
       .sort();
   }
 

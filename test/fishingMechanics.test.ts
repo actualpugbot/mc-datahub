@@ -324,4 +324,33 @@ public class FishingHook extends Projectile {
     expect(mechanics?.warnings.length).toBeGreaterThan(10);
     expect(mechanics?.warnings.some((warning) => warning.includes("LootPoolSingletonContainer.java"))).toBe(true);
   });
+
+  test("resolves 26.4 MobEffectIds registrations from their source keys", async () => {
+    const root = await createTempClientRoot();
+    await writeJavaFile(root, "net/minecraft/world/entity/projectile/FishingHook.java", "public class FishingHook {}");
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/effect/MobEffects.java",
+      'public class MobEffects { public static final Holder<MobEffect> LUCK = register(MobEffectIds.LUCK, new MobEffect().addAttributeModifier(Attributes.LUCK, Identifier.withDefaultNamespace("effect.luck"), 1.0, AttributeModifier.Operation.ADD_VALUE)); public static final Holder<MobEffect> UNLUCK = register(MobEffectIds.UNLUCK, new MobEffect().addAttributeModifier(Attributes.LUCK, Identifier.withDefaultNamespace("effect.unluck"), -1.0, AttributeModifier.Operation.ADD_VALUE)); }',
+    );
+    await writeJavaFile(
+      root,
+      "net/minecraft/world/effect/MobEffectIds.java",
+      'public class MobEffectIds { public static final ResourceKey<MobEffect> LUCK = createKey("luck"); public static final ResourceKey<MobEffect> UNLUCK = createKey("unluck"); }',
+    );
+
+    const mechanics = await new FishingMechanicsExtractor(createConsoleLogger(false)).extract(root);
+    expect(mechanics?.luckSources.luckEffect).toMatchObject({
+      id: "minecraft:luck",
+      attribute: "minecraft:luck",
+      amount: 1,
+    });
+    expect(mechanics?.luckSources.unluckEffect).toMatchObject({
+      id: "minecraft:unluck",
+      attribute: "minecraft:luck",
+      amount: -1,
+    });
+    expect(mechanics?.luckSources.sourcePaths).toContain("net/minecraft/world/effect/MobEffectIds.java");
+    expect(mechanics?.warnings.some((warning) => warning.includes("luck attribute modifier"))).toBe(false);
+  });
 });

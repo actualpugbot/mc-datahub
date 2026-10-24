@@ -24,7 +24,7 @@ describe("mob model extractor", () => {
     await writeJava(root, "net/minecraft/client/renderer/entity/EntityRenderers.java", [
       "package net.minecraft.client.renderer.entity;",
       "public class EntityRenderers {",
-      "  static { register(EntityTypes.COW, CowRenderer::new); }",
+      "  static { register(registry, EntityTypes.COW, CowRenderer::new); }",
       "}",
     ]);
     await writeJava(root, "net/minecraft/client/renderer/entity/CowRenderer.java", [

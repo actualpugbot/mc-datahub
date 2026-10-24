@@ -606,12 +606,12 @@ function evaluateContext(
   };
 }
 
-/** Collapse contexts that produce identical numbers into one cell listing all of them. */
+/** Collapse contexts only when both their items and diagnostics are identical. */
 function collapseCells(evaluated: EvaluatedContext[]): LootOddsCell[] {
   const cells: LootOddsCell[] = [];
   const bySignature = new Map<string, LootOddsCell>();
   for (const entry of evaluated) {
-    const signature = JSON.stringify(entry.items);
+    const signature = JSON.stringify({ items: entry.items, warnings: entry.warnings });
     const existing = bySignature.get(signature);
     if (existing) {
       existing.contexts.push(entry.key);
@@ -687,7 +687,9 @@ function buildMobDrops(
     );
     const [mobKill, playerKill] = probes;
     if (!mobKill || !playerKill) continue;
-    const playerGated = JSON.stringify(mobKill.items) !== JSON.stringify(playerKill.items);
+    const playerGated =
+      JSON.stringify(mobKill.items) !== JSON.stringify(playerKill.items) ||
+      JSON.stringify(mobKill.warnings) !== JSON.stringify(playerKill.warnings);
 
     const evaluated: EvaluatedContext[] = [];
     for (const killedByPlayer of playerGated ? [false, true] : [false]) {

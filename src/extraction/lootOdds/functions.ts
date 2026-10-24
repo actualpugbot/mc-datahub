@@ -1,3 +1,4 @@
+import { lootCondition } from "./schema.js";
 /**
  * Loot functions.
  *
@@ -114,7 +115,7 @@ function applyOne(branches: BuildBranch[], raw: Json, env: FunctionEnv): BuildBr
     return branches;
   }
   const compiler = new ConditionCompiler(env.data, env.context);
-  const compiled = compiler.compileAll(object.conditions);
+  const compiled = compiler.compileAll(lootCondition(object));
   const probability = compiler.probabilityOf(compiled.expr);
   env.warnings.push(...compiler.warnings);
 
@@ -147,7 +148,9 @@ function enchantmentLevel(env: FunctionEnv, id: Json | undefined): number {
 }
 
 function runFunction(build: ItemBuild, object: Record<string, Json>, env: FunctionEnv): void {
-  const type = namespaced(typeof object.function === "string" ? object.function : "unknown");
+  const type = namespaced(
+    typeof object.type === "string" ? object.type : typeof object.function === "string" ? object.function : "unknown",
+  );
   const maxCount = env.context.maxTrackedCount;
 
   switch (type) {

@@ -30,6 +30,12 @@ const COLLECTIONS: Array<{ slug: string; key: string; summary: string }> = [
       "Source-derived wood families: sapling growers and growth mechanics, configured tree/fungus shapes, and per-block flammability, furnace fuel, and compost stats.",
   },
   {
+    slug: "raid-mechanics",
+    key: "raidMechanics",
+    summary:
+      "Source-derived raid mechanics: per-difficulty wave rosters with exact bonus-spawn odds, riders, captains, the Bad Omen to Raid Omen flow, raid enchantments, timers, spawn geometry, outcomes, Hero of the Village rewards, and pillager patrols.",
+  },
+  {
     slug: "fishing-odds",
     key: "fishingOdds",
     summary:

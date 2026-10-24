@@ -159,7 +159,7 @@ describe("diff coverage of the whole dataset", () => {
     // Which fields exist is enforced at compile time by _EveryDatasetFieldIsClassified; the counts are
     // here so that adding one to VersionDataset without wiring the diff is caught at run time too.
     expect(collections).toHaveLength(24);
-    expect(objects).toHaveLength(11);
+    expect(objects).toHaveLength(12);
     for (const [name, value] of objects) {
       expect(value, name).toMatchObject({ status: expect.any(String), changedFields: expect.any(Array) });
     }
@@ -185,6 +185,7 @@ describe("diff coverage of the whole dataset", () => {
     expect(diff.sulfurCube.status).toBe("added");
     expect(diff.sulfurCube.changedFields).toEqual(["archetypes", "blocks"]);
     expect(diff.lootOdds.status).toBe("unchanged");
+    expect(diff.raidMechanics.status).toBe("unchanged");
     expect(diff.anvilMechanics).toEqual({ status: "unchanged", changedFields: [] });
   });
 

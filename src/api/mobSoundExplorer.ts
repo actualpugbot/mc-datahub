@@ -12,6 +12,7 @@ import type {
   MobSoundDefinition,
   VersionDataset,
 } from "../domain/types.js";
+import { classifyVersion } from "../versions/classifyVersion.js";
 
 export interface MobSoundExplorerRequest {
   version?: string;
@@ -150,14 +151,18 @@ async function resolveRequestedVersion(
     return requestedVersion;
   }
 
-  for (const version of [...availableVersions].reverse()) {
+  const newestFirst = [...availableVersions].sort((left, right) => right.localeCompare(left, "en", { numeric: true }));
+  const stable = newestFirst.filter((version) => classifyVersion(version).channel === "release");
+  const previews = newestFirst.filter((version) => classifyVersion(version).channel === "snapshot");
+
+  for (const version of [...stable, ...previews]) {
     const dataset = await loadDataset(version);
     if (dataset.mobSounds.length > 0) {
       return version;
     }
   }
 
-  return availableVersions[availableVersions.length - 1]!;
+  return stable[0] ?? previews[0]!;
 }
 
 function resolveCompareToVersion(

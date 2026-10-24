@@ -16,6 +16,7 @@ import { MobProfileExtractor } from "./extraction/mobProfileExtractor.js";
 import { RenderDataExtractor } from "./extraction/renderDataExtractor.js";
 import { AnvilMechanicsExtractor } from "./extraction/anvilMechanicsExtractor.js";
 import { SulfurCubeExtractor } from "./extraction/sulfurCubeExtractor.js";
+import { RaidMechanicsExtractor } from "./extraction/raidMechanicsExtractor.js";
 import { TreeFeaturesExtractor } from "./extraction/treeFeaturesExtractor.js";
 import { FishingMechanicsExtractor } from "./extraction/fishingMechanicsExtractor.js";
 import { MobAnimationExtractor } from "./extraction/mobAnimationExtractor.js";
@@ -30,6 +31,8 @@ import { MinecraftNewsWatcher } from "./watcher/newsWatcher.js";
 // Public data contract: downstream consumers can `import type { VersionDataset, ... } from "mc-datahub"`
 // to type the JSON produced by this pipeline without re-declaring the shapes.
 export type * from "./domain/types.js";
+export { classifyVersion } from "./versions/classifyVersion.js";
+export type { VersionChannel, VersionStage } from "./versions/classifyVersion.js";
 
 export function createApplicationContext(config: AppConfig, logger: Logger) {
   const http = new FetchHttpClient(logger);
@@ -49,6 +52,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
   const sourceExtractor = new DecompiledSourceExtractor(logger);
   const anvilMechanicsExtractor = new AnvilMechanicsExtractor(logger);
   const sulfurCubeExtractor = new SulfurCubeExtractor(logger);
+  const raidMechanicsExtractor = new RaidMechanicsExtractor(logger);
   const treeFeaturesExtractor = new TreeFeaturesExtractor(logger);
   const fishingMechanicsExtractor = new FishingMechanicsExtractor(logger);
   const mobAnimationExtractor = new MobAnimationExtractor(logger);
@@ -70,6 +74,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     sourceExtractor,
     anvilMechanicsExtractor,
     sulfurCubeExtractor,
+    raidMechanicsExtractor,
     treeFeaturesExtractor,
     fishingMechanicsExtractor,
     mobAnimationExtractor,
@@ -100,6 +105,7 @@ export function createApplicationContext(config: AppConfig, logger: Logger) {
     sourceExtractor,
     anvilMechanicsExtractor,
     sulfurCubeExtractor,
+    raidMechanicsExtractor,
     treeFeaturesExtractor,
     fishingMechanicsExtractor,
     mobAnimationExtractor,

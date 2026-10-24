@@ -419,12 +419,12 @@ const boardingCooldownTicks = grab(entityJava, /boardingCooldown = (\d+)/, "boar
 const defaultBabyAgeScale = grab(livingJava, /isBaby\(\)\s*\?\s*([\d.]+)F\s*:\s*1\.0F/, "default baby age scale");
 const boatYawClampDeg = grab(
   "net/minecraft/world/entity/vehicle/boat/AbstractBoat.java",
-  /Mth\.clamp\(delta, -([\d.]+)F, \1F\)/,
+  /(?:Mth|Math)\.clamp\(delta, -([\d.]+)F, \1F\)/,
   "boat passenger yaw clamp",
 );
 const riderBodyYawMaxHeadDeltaDeg = grab(
   "net/minecraft/client/renderer/entity/LivingEntityRenderer.java",
-  /Mth\.clamp\(Mth\.wrapDegrees\(headRot - bodyRot\), -([\d.]+)F, \1F\)/,
+  /(?:Mth|Math)\.clamp\(Mth\.wrapDegrees\(headRot - bodyRot\), -([\d.]+)F, \1F\)/,
   "rider body-yaw head clamp",
 );
 

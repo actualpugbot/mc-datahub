@@ -74,6 +74,7 @@ export class DiffEngine {
       anvilMechanics: this.diffObject(from.anvilMechanics, to.anvilMechanics),
       sulfurCube: this.diffObject(from.sulfurCube, to.sulfurCube),
       treeFeatures: this.diffObject(from.treeFeatures, to.treeFeatures),
+      raidMechanics: this.diffObject(from.raidMechanics, to.raidMechanics),
       fishingOdds: this.diffObject(from.fishingOdds, to.fishingOdds),
       lootOdds: this.diffObject(from.lootOdds, to.lootOdds),
       banners: this.diffObject(from.banners, to.banners),

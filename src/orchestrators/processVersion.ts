@@ -23,11 +23,13 @@ import type { AnvilMechanicsExtractor } from "../extraction/anvilMechanicsExtrac
 import type { FishingMechanicsExtractor } from "../extraction/fishingMechanicsExtractor.js";
 import { buildFishingOddsDataset, buildLootOddsDataset, createLootOddsData } from "../extraction/lootOdds/index.js";
 import type { SulfurCubeExtractor } from "../extraction/sulfurCubeExtractor.js";
+import type { RaidMechanicsExtractor } from "../extraction/raidMechanicsExtractor.js";
 import type { TreeFeaturesExtractor } from "../extraction/treeFeaturesExtractor.js";
 import type { MobAnimationExtractor } from "../extraction/mobAnimationExtractor.js";
 import type { DecompiledSourceExtractor } from "../extraction/sourceDerivedExtractor.js";
 import { validateRenderDataset } from "../validation/renderValidation.js";
 import { validateDataset } from "../validation/datasetValidation.js";
+import { buildVersionSidecars } from "./buildVersionSidecars.js";
 
 export interface ProcessVersionOptions {
   mappingProvider: MappingProvider;
@@ -51,6 +53,7 @@ export class ProcessVersionWorkflow {
     private readonly sourceExtractor: DecompiledSourceExtractor,
     private readonly anvilMechanicsExtractor: AnvilMechanicsExtractor,
     private readonly sulfurCubeExtractor: SulfurCubeExtractor,
+    private readonly raidMechanicsExtractor: RaidMechanicsExtractor,
     private readonly treeFeaturesExtractor: TreeFeaturesExtractor,
     private readonly fishingMechanicsExtractor: FishingMechanicsExtractor,
     private readonly mobAnimationExtractor: MobAnimationExtractor,
@@ -108,6 +111,8 @@ export class ProcessVersionWorkflow {
 
     const decompiledClientRoot = join(this.config.workspace.versionsDir, manifestEntry.id, "decompiled", "client");
     const dataset = await this.extractor.extract(manifestEntry.id, sources);
+    dataset.releaseTime = metadata.releaseTime || manifestEntry.releaseTime;
+    dataset.versionType = manifestEntry.type;
     const mobSoundData = await this.mobSoundExtractor.extract(manifestEntry.id, metadata, sources, decompiledClientRoot);
     const mobImages = await this.mobImageExtractor.extract(mobSoundData.mobSounds, sources, decompiledClientRoot);
     const mobModels = await this.mobModelExtractor.extract(mobSoundData.mobSounds, decompiledClientRoot);
@@ -119,6 +124,7 @@ export class ProcessVersionWorkflow {
     dataset.anvilMechanics = await this.anvilMechanicsExtractor.extract(decompiledClientRoot);
     dataset.sulfurCube = await this.sulfurCubeExtractor.extract(decompiledClientRoot);
     dataset.treeFeatures = await this.treeFeaturesExtractor.extract(decompiledClientRoot);
+    dataset.raidMechanics = await this.raidMechanicsExtractor.extract(decompiledClientRoot);
     // The odds engine reads the collections this dataset already carries, so it runs off the
     // in-memory dataset rather than re-reading the sidecars off disk.
     const lootOddsData = createLootOddsData({
@@ -170,6 +176,7 @@ export class ProcessVersionWorkflow {
       );
     }
     const datasetPath = await this.datasetStore.saveDataset(dataset, new MergedArchiveSource(sources));
+    await buildVersionSidecars(this.config.workspace, manifestEntry.id, dataset);
     await this.stateStore.markVersionProcessed(manifestEntry.id, fingerprint, datasetPath, artifacts.metadataPath);
 
     return {
